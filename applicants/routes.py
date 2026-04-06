@@ -71,7 +71,15 @@ def list_applicants():
 def add_applicant():
     """Add new applicant"""
     if request.method == 'POST':
-        full_name = request.form.get('full_name', '').strip()
+        # Client type fields
+        client_type = request.form.get('client_type', 'retail').strip()
+        corporate_name = request.form.get('corporate_name', '').strip()
+        crm_id = request.form.get('crm_id', '').strip()
+
+        # Passport-format name
+        surname = request.form.get('surname', '').strip()
+        given_names = request.form.get('given_names', '').strip()
+
         passport_number = request.form.get('passport_number', '').strip()
         nationality = request.form.get('nationality', '').strip()
         date_of_birth = request.form.get('date_of_birth', '').strip()
@@ -80,15 +88,27 @@ def add_applicant():
         visa_purpose = request.form.get('visa_purpose', '').strip()
         notes = request.form.get('notes', '').strip()
 
-        if not full_name:
-            flash('Full name is required.', 'danger')
-            return render_template('applicants/form.html')
+        if not surname or not given_names:
+            flash('Surname and Given Names are required.', 'danger')
+            return render_template('applicants/form.html', applicant=None)
 
         if not visa_type:
             flash('Visa type is required.', 'danger')
-            return render_template('applicants/form.html')
+            return render_template('applicants/form.html', applicant=None)
+
+        if client_type == 'corporate' and not corporate_name:
+            flash('Corporate name is required for corporate clients.', 'danger')
+            return render_template('applicants/form.html', applicant=None)
+
+        # Build full_name in passport format: SURNAME, Given Names
+        full_name = f"{surname.upper()}, {given_names}"
 
         applicant = Applicant(
+            client_type=client_type,
+            corporate_name=corporate_name or None,
+            crm_id=crm_id or None,
+            surname=surname.upper(),
+            given_names=given_names,
             full_name=full_name,
             passport_number=passport_number or None,
             nationality=nationality or None,
@@ -103,6 +123,31 @@ def add_applicant():
 
         db.session.add(applicant)
         db.session.commit()
+
+        # Handle passport copy upload if provided
+        passport_file = request.files.get('passport_copy')
+        if passport_file and passport_file.filename and allowed_file(passport_file.filename):
+            applicant_dir = get_applicant_directory(applicant.id)
+            os.makedirs(applicant_dir, exist_ok=True)
+
+            original_filename = secure_filename(passport_file.filename)
+            timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+            filename = f"{timestamp}_{original_filename}"
+            file_path = os.path.join(applicant_dir, filename)
+            passport_file.save(file_path)
+
+            relative_path = os.path.join(str(applicant.id), filename)
+            document = Document(
+                applicant_id=applicant.id,
+                filename=filename,
+                original_filename=original_filename,
+                file_path=relative_path,
+                doc_type='passport_copy',
+                uploaded_by_id=current_user.id
+            )
+            db.session.add(document)
+            applicant.status = 'documents_uploaded'
+            db.session.commit()
 
         flash(f'Applicant {full_name} created successfully!', 'success')
         return redirect(url_for('applicants.view_applicant', applicant_id=applicant.id))
@@ -139,7 +184,11 @@ def edit_applicant(applicant_id):
         return redirect(url_for('applicants.list_applicants'))
 
     if request.method == 'POST':
-        full_name = request.form.get('full_name', '').strip()
+        client_type = request.form.get('client_type', 'retail').strip()
+        corporate_name = request.form.get('corporate_name', '').strip()
+        crm_id = request.form.get('crm_id', '').strip()
+        surname = request.form.get('surname', '').strip()
+        given_names = request.form.get('given_names', '').strip()
         passport_number = request.form.get('passport_number', '').strip()
         nationality = request.form.get('nationality', '').strip()
         date_of_birth = request.form.get('date_of_birth', '').strip()
@@ -148,15 +197,20 @@ def edit_applicant(applicant_id):
         visa_purpose = request.form.get('visa_purpose', '').strip()
         notes = request.form.get('notes', '').strip()
 
-        if not full_name:
-            flash('Full name is required.', 'danger')
+        if not surname or not given_names:
+            flash('Surname and Given Names are required.', 'danger')
             return render_template('applicants/form.html', applicant=applicant)
 
         if not visa_type:
             flash('Visa type is required.', 'danger')
             return render_template('applicants/form.html', applicant=applicant)
 
-        applicant.full_name = full_name
+        applicant.client_type = client_type
+        applicant.corporate_name = corporate_name or None
+        applicant.crm_id = crm_id or None
+        applicant.surname = surname.upper()
+        applicant.given_names = given_names
+        applicant.full_name = f"{surname.upper()}, {given_names}"
         applicant.passport_number = passport_number or None
         applicant.nationality = nationality or None
         applicant.date_of_birth = datetime.strptime(date_of_birth, '%Y-%m-%d').date() if date_of_birth else None
@@ -168,7 +222,7 @@ def edit_applicant(applicant_id):
 
         db.session.commit()
 
-        flash(f'Applicant {full_name} updated successfully!', 'success')
+        flash(f'Applicant {applicant.full_name} updated successfully!', 'success')
         return redirect(url_for('applicants.view_applicant', applicant_id=applicant.id))
 
     return render_template('applicants/form.html', applicant=applicant)

@@ -17,19 +17,68 @@
             </div>
 
             <div class="card-body">
-                <form method="POST" novalidate>
-                    <div class="row">
-                        <div class="col-md-12 mb-3">
-                            <label for="full_name" class="form-label">Full Name <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" id="full_name" name="full_name" required
-                                value="{% if applicant %}{{ applicant.full_name }}{% endif %}">
+                <form method="POST" enctype="multipart/form-data" novalidate>
+
+                    <!-- ── Client Type Section ── -->
+                    <div class="card bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted mb-3">Client Information</h6>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="client_type" class="form-label">Client Type <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="client_type" name="client_type" required onchange="toggleClientFields()">
+                                        <option value="retail" {% if applicant and applicant.client_type == 'retail' %}selected{% elif not applicant %}selected{% endif %}>Retail Client</option>
+                                        <option value="corporate" {% if applicant and applicant.client_type == 'corporate' %}selected{% endif %}>Corporate Client</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3" id="corporate_name_field" style="display:none;">
+                                    <label for="corporate_name" class="form-label">Corporate Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="corporate_name" name="corporate_name"
+                                        placeholder="Company name"
+                                        value="{% if applicant and applicant.corporate_name %}{{ applicant.corporate_name }}{% endif %}">
+                                </div>
+                                <div class="col-md-4 mb-3" id="crm_id_field">
+                                    <label for="crm_id" class="form-label">CRM ID</label>
+                                    <input type="text" class="form-control" id="crm_id" name="crm_id"
+                                        placeholder="e.g. CRM-12345"
+                                        value="{% if applicant and applicant.crm_id %}{{ applicant.crm_id }}{% endif %}">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
+                    <!-- ── Name (Passport Format) ── -->
+                    <div class="card bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted mb-3">Applicant Name <small class="text-secondary">(as in passport)</small></h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="surname" class="form-label">Surname / Family Name <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control text-uppercase" id="surname" name="surname" required
+                                        placeholder="e.g. SALIAN"
+                                        style="text-transform: uppercase;"
+                                        value="{% if applicant and applicant.surname %}{{ applicant.surname }}{% endif %}">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="given_names" class="form-label">Given Names <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="given_names" name="given_names" required
+                                        placeholder="e.g. Nitish Kumar"
+                                        value="{% if applicant and applicant.given_names %}{{ applicant.given_names }}{% endif %}">
+                                </div>
+                            </div>
+                            <div class="text-muted small">
+                                <i class="fa fa-info-circle"></i>
+                                Name will be stored as: <strong id="name_preview">SURNAME, Given Names</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── Passport & Personal Details ── -->
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="passport_number" class="form-label">Passport Number</label>
-                            <input type="text" class="form-control" id="passport_number" name="passport_number"
+                            <input type="text" class="form-control text-uppercase" id="passport_number" name="passport_number"
+                                style="text-transform: uppercase;"
                                 value="{% if applicant %}{{ applicant.passport_number }}{% endif %}">
                         </div>
                         <div class="col-md-6 mb-3">
@@ -79,9 +128,25 @@
                         </div>
                     </div>
 
+                    <!-- ── Passport Upload ── -->
+                    {% if not applicant %}
+                    <div class="card bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted mb-3">Upload Passport Copy</h6>
+                            <div class="mb-2">
+                                <input type="file" class="form-control" id="passport_copy" name="passport_copy"
+                                    accept=".pdf,.jpg,.jpeg,.png">
+                            </div>
+                            <div class="text-muted small">
+                                <i class="fa fa-info-circle"></i> Upload a scan or photo of the passport bio page (PDF, JPG, or PNG). You can also upload later from the applicant detail page.
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <div class="mb-3">
                         <label for="notes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="4">{% if applicant %}{{ applicant.notes }}{% endif %}</textarea>
+                        <textarea class="form-control" id="notes" name="notes" rows="3">{% if applicant %}{{ applicant.notes }}{% endif %}</textarea>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -95,4 +160,35 @@
         </div>
     </div>
 </div>
+
+<script>
+function toggleClientFields() {
+    const clientType = document.getElementById('client_type').value;
+    const corporateField = document.getElementById('corporate_name_field');
+    const crmField = document.getElementById('crm_id_field');
+
+    if (clientType === 'corporate') {
+        corporateField.style.display = 'block';
+        crmField.style.display = 'none';
+    } else {
+        corporateField.style.display = 'none';
+        crmField.style.display = 'block';
+    }
+}
+
+function updateNamePreview() {
+    const surname = document.getElementById('surname').value.toUpperCase() || 'SURNAME';
+    const given = document.getElementById('given_names').value || 'Given Names';
+    document.getElementById('name_preview').textContent = surname + ', ' + given;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleClientFields();
+    updateNamePreview();
+
+    document.getElementById('surname').addEventListener('input', updateNamePreview);
+    document.getElementById('given_names').addEventListener('input', updateNamePreview);
+});
+</script>
 {% endblock %}

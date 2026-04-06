@@ -47,7 +47,17 @@ class Applicant(db.Model):
     __tablename__ = 'applicant'
 
     id = db.Column(db.Integer, primary_key=True)
-    full_name = db.Column(db.String(200), nullable=False, index=True)
+
+    # Client type: corporate or retail
+    client_type = db.Column(db.String(20), nullable=False, default='retail')  # 'corporate' or 'retail'
+    corporate_name = db.Column(db.String(200))  # Company name if corporate
+    crm_id = db.Column(db.String(50), index=True)  # CRM ID if retail client
+
+    # Passport-format name fields
+    surname = db.Column(db.String(100), nullable=False, index=True)
+    given_names = db.Column(db.String(200), nullable=False)
+    full_name = db.Column(db.String(300), nullable=False, index=True)  # Auto: SURNAME, Given Names
+
     passport_number = db.Column(db.String(50), index=True)
     nationality = db.Column(db.String(100))
     date_of_birth = db.Column(db.Date)
@@ -64,6 +74,16 @@ class Applicant(db.Model):
     # Relationships
     documents = db.relationship('Document', backref='applicant', lazy=True, cascade='all, delete-orphan')
     qc_reports = db.relationship('QCReport', backref='applicant', lazy=True, cascade='all, delete-orphan')
+
+    def get_display_name(self):
+        """Return name in passport format: SURNAME, Given Names"""
+        return f"{self.surname.upper()}, {self.given_names}"
+
+    def get_client_display(self):
+        """Return client info string"""
+        if self.client_type == 'corporate':
+            return f"Corporate — {self.corporate_name or 'N/A'}"
+        return f"Retail — CRM: {self.crm_id or 'N/A'}"
 
     def __repr__(self):
         return f'<Applicant {self.full_name}>'
