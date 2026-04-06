@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}QC Report #{{ report.id }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2>QC Report #{{ report.id }}</h2>
+        <p class="text-muted mb-0">
+            <i class="fa fa-file-text"></i> {{ applicant.full_name }}
+        </p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('applicants.view_applicant', applicant_id=applicant.id) }}" class="btn btn-outline-secondary">
+            <i class="fa fa-arrow-left"></i> Back to Applicant
+        </a>
+    </div>
+</div>
+
+<!-- Report Summary -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <h6>Overall Status</h6>
+            <p class="stat-value">
+                <span class="badge bg-{{ report.get_status_badge_class() }} fs-6">{{ report.overall_status|upper }}</span>
+            </p>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <h6>Pass Rate</h6>
+            <p class="stat-value" style="color: {{ '#27ae60' if report.get_pass_rate() >= 80 else '#f39c12' if report.get_pass_rate() >= 50 else '#e74c3c' }}">
+                {{ report.get_pass_rate() }}%
+            </p>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <h6>Checks Passed</h6>
+            <p class="stat-value" style="color: #27ae60;">{{ report.passed_checks }}</p>
+            <small class="text-muted">of {{ report.total_checks }} total</small>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <h6>Checks Failed</h6>
+            <p class="stat-value" style="color: #e74c3c;">{{ report.failed_checks }}</p>
+            <small class="text-muted">of {{ report.total_checks }} total</small>
+        </div>
+    </div>
+</div>
+
+<!-- Applicant Info -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Applicant Information</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <dl class="row">
+                    <dt class="col-sm-4">Name:</dt>
+                    <dd class="col-sm-8">{{ applicant.full_name }}</dd>
+
+                    <dt class="col-sm-4">Passport:</dt>
+                    <dd class="col-sm-8">
+                        {% if applicant.passport_number %}
+                            <code>{{ applicant.passport_number }}</code>
+                        {% else %}
+                            <span class="text-muted">Not provided</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4">Nationality:</dt>
+                    <dd class="col-sm-8">{{ applicant.nationality or '-' }}</dd>
+                </dl>
+            </div>
+            <div class="col-md-6">
+                <dl class="row">
+                    <dt class="col-sm-4">Visa Type:</dt>
+                    <dd class="col-sm-8">{{ applicant.visa_type|upper if applicant.visa_type else '-' }}</dd>
+
+                    <dt class="col-sm-4">Purpose:</dt>
+                    <dd class="col-sm-8">{{ applicant.visa_purpose|capitalize if applicant.visa_purpose else '-' }}</dd>
+
+                    <dt class="col-sm-4">Destination:</dt>
+                    <dd class="col-sm-8">{{ applicant.destination_country or '-' }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- QC Report Details -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">QC Check Results</h5>
+    </div>
+    <div class="card-body">
+        {% if report.report_data %}
+            {% set data = report.report_data %}
+
+            <!-- Check categories -->
+            {% if data.get('checks_by_category') %}
+                {% for category, checks in data['checks_by_category'].items() %}
+                    <div class="mb-4">
+                        <h6 class="mb-3">
+                            <i class="fa fa-folder"></i> {{ category }}
+                        </h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tbody>
+                                    {% for check in checks %}
+                                        <tr>
+                                            <td style="width: 30px;">
+                                                {% if check.status == 'pass' %}
+                                                    <i class="fa fa-check-circle" style="color: #27ae60; font-size: 1.2rem;"></i>
+                                                {% elif check.status == 'fail' %}
+                                                    <i class="fa fa-times-circle" style="color: #e74c3c; font-size: 1.2rem;"></i>
+                                                {% else %}
+                                                    <i class="fa fa-exclamation-circle" style="color: #f39c12; font-size: 1.2rem;"></i>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <strong>{{ check.name }}</strong><br>
+                                                <small class="text-muted">{{ check.description }}</small>
+                                            </td>
+                                            <td style="width: 100px;">
+                                                <span class="badge bg-{{ 'success' if check.status == 'pass' else 'danger' if check.status == 'fail' else 'warning' }}">
+                                                    {{ check.status|upper }}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {% if check.details %}
+                                            <tr>
+                                                <td colspan="3">
+                                                    <small class="text-muted d-block mt-2">
+                                                        <i class="fa fa-info-circle"></i> {{ check.details }}
+                                                    </small>
+                                                </td>
+                                            </tr>
+                                        {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <div class="alert alert-info">
+                    <i class="fa fa-info-circle"></i> No detailed check information available.
+                </div>
+            {% endif %}
+
+            <!-- Summary -->
+            {% if data.get('summary') %}
+                <div class="alert alert-info mt-4">
+                    <h6>Summary:</h6>
+                    <p class="mb-0">{{ data['summary'] }}</p>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="alert alert-warning">
+                <i class="fa fa-exclamation-triangle"></i> No detailed report data available. The QC check was completed but details could not be retrieved.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Report Info -->
+<div class="mt-4 p-3 bg-light rounded text-muted small">
+    <i class="fa fa-clock"></i> Report generated: {{ report.run_at.strftime('%B %d, %Y at %H:%M') }}<br>
+    <i class="fa fa-user"></i> Run by: {{ report.run_by.full_name or report.run_by.username }}<br>
+    <i class="fa fa-check-type"></i> Check type: {{ report.check_type or 'Unknown' }}
+</div>
+{% endblock %}

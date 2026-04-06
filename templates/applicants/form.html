@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{% if applicant %}Edit{% else %}New{% endif %} Applicant{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    {% if applicant %}
+                        <i class="fa fa-edit"></i> Edit Applicant
+                    {% else %}
+                        <i class="fa fa-plus"></i> New Applicant
+                    {% endif %}
+                </h4>
+            </div>
+
+            <div class="card-body">
+                <form method="POST" novalidate>
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label for="full_name" class="form-label">Full Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="full_name" name="full_name" required
+                                value="{% if applicant %}{{ applicant.full_name }}{% endif %}">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="passport_number" class="form-label">Passport Number</label>
+                            <input type="text" class="form-control" id="passport_number" name="passport_number"
+                                value="{% if applicant %}{{ applicant.passport_number }}{% endif %}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="nationality" class="form-label">Nationality</label>
+                            <input type="text" class="form-control" id="nationality" name="nationality"
+                                value="{% if applicant %}{{ applicant.nationality }}{% endif %}">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="date_of_birth" class="form-label">Date of Birth</label>
+                            <input type="date" class="form-control" id="date_of_birth" name="date_of_birth"
+                                value="{% if applicant and applicant.date_of_birth %}{{ applicant.date_of_birth.strftime('%Y-%m-%d') }}{% endif %}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="visa_type" class="form-label">Visa Type <span class="text-danger">*</span></label>
+                            <select class="form-select" id="visa_type" name="visa_type" required>
+                                <option value="">-- Select --</option>
+                                <option value="schengen" {% if applicant and applicant.visa_type == 'schengen' %}selected{% endif %}>Schengen</option>
+                                <option value="uk" {% if applicant and applicant.visa_type == 'uk' %}selected{% endif %}>UK</option>
+                                <option value="usa" {% if applicant and applicant.visa_type == 'usa' %}selected{% endif %}>USA</option>
+                                <option value="canada" {% if applicant and applicant.visa_type == 'canada' %}selected{% endif %}>Canada</option>
+                                <option value="australia" {% if applicant and applicant.visa_type == 'australia' %}selected{% endif %}>Australia</option>
+                                <option value="other" {% if applicant and applicant.visa_type == 'other' %}selected{% endif %}>Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="destination_country" class="form-label">Destination Country</label>
+                            <input type="text" class="form-control" id="destination_country" name="destination_country"
+                                value="{% if applicant %}{{ applicant.destination_country }}{% endif %}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="visa_purpose" class="form-label">Visa Purpose</label>
+                            <select class="form-select" id="visa_purpose" name="visa_purpose">
+                                <option value="">-- Select --</option>
+                                <option value="tourist" {% if applicant and applicant.visa_purpose == 'tourist' %}selected{% endif %}>Tourist</option>
+                                <option value="business" {% if applicant and applicant.visa_purpose == 'business' %}selected{% endif %}>Business</option>
+                                <option value="student" {% if applicant and applicant.visa_purpose == 'student' %}selected{% endif %}>Student</option>
+                                <option value="work" {% if applicant and applicant.visa_purpose == 'work' %}selected{% endif %}>Work</option>
+                                <option value="visit_family" {% if applicant and applicant.visa_purpose == 'visit_family' %}selected{% endif %}>Visit Family</option>
+                                <option value="other" {% if applicant and applicant.visa_purpose == 'other' %}selected{% endif %}>Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="4">{% if applicant %}{{ applicant.notes }}{% endif %}</textarea>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('applicants.list_applicants') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            {% if applicant %}Update{% else %}Create{% endif %} Applicant
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

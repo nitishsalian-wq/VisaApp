@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}{% if user %}Edit{% else %}Add{% endif %} User{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    {% if user %}
+                        <i class="fa fa-edit"></i> Edit User
+                    {% else %}
+                        <i class="fa fa-plus"></i> Add User
+                    {% endif %}
+                </h4>
+            </div>
+
+            <div class="card-body">
+                <form method="POST" novalidate>
+                    {% if user %}
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" value="{{ user.username }}" disabled>
+                            <small class="text-muted">Cannot be changed</small>
+                        </div>
+                    {% else %}
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                            <small class="text-muted">Unique identifier for login</small>
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" id="email" name="email" required
+                            value="{% if user %}{{ user.email }}{% endif %}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="full_name" class="form-label">Full Name</label>
+                        <input type="text" class="form-control" id="full_name" name="full_name"
+                            value="{% if user %}{{ user.full_name }}{% endif %}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Role <span class="text-danger">*</span></label>
+                        <select class="form-select" id="role" name="role" required>
+                            <option value="">-- Select --</option>
+                            <option value="executive" {% if not user or user.role == 'executive' %}selected{% endif %}>Executive</option>
+                            <option value="admin" {% if user and user.role == 'admin' %}selected{% endif %}>Admin</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">
+                            {% if user %}Password (Leave empty to keep current){% else %}Password<span class="text-danger">*</span>{% endif %}
+                        </label>
+                        <input type="password" class="form-control" id="password" name="password" {% if not user %}required{% endif %}>
+                        <small class="text-muted">Minimum 8 characters</small>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('admin.list_users') }}" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-primary">
+                            {% if user %}Update{% else %}Create{% endif %} User
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

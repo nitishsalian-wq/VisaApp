@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}User Management{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2><i class="fa fa-users"></i> User Management</h2>
+        <p class="text-muted">Manage platform users and permissions</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('admin.add_user') }}" class="btn btn-primary">
+            <i class="fa fa-plus"></i> Add User
+        </a>
+    </div>
+</div>
+
+<!-- Search -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="GET" class="row g-3">
+                    <div class="col-md-9">
+                        <input type="text" class="form-control" name="search" placeholder="Search by name, email, or username..." value="{{ search }}">
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-outline-primary w-100">Search</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Users Table -->
+{% if users %}
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Full Name</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                    <tr>
+                        <td>
+                            <strong>{{ user.username }}</strong>
+                        </td>
+                        <td>
+                            <small>{{ user.email }}</small>
+                        </td>
+                        <td>
+                            {{ user.full_name or '-' }}
+                        </td>
+                        <td>
+                            {% if user.role == 'admin' %}
+                                <span class="badge bg-danger">Admin</span>
+                            {% else %}
+                                <span class="badge bg-info">Executive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.is_active %}
+                                <span class="badge bg-success">Active</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.last_login %}
+                                <small class="text-muted">{{ user.last_login.strftime('%b %d, %Y %H:%M') }}</small>
+                            {% else %}
+                                <small class="text-muted">Never</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="fa fa-edit"></i> Edit
+                            </a>
+                            {% if user.id != current_user.id %}
+                                {% if user.is_active %}
+                                    <form method="POST" action="{{ url_for('admin.deactivate_user', user_id=user.id) }}" style="display: inline;">
+                                        <button type="submit" class="btn btn-sm btn-outline-warning" onclick="return confirm('Deactivate this user?');">
+                                            <i class="fa fa-ban"></i> Deactivate
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <form method="POST" action="{{ url_for('admin.activate_user', user_id=user.id) }}" style="display: inline;">
+                                        <button type="submit" class="btn btn-sm btn-outline-success">
+                                            <i class="fa fa-check"></i> Activate
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if pagination.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('admin.list_users', page=pagination.prev_num, search=search) }}">
+                            <i class="fa fa-chevron-left"></i> Previous
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% for page_num in pagination.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num == pagination.page %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_num }}</span>
+                            </li>
+                        {% else %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('admin.list_users', page=page_num, search=search) }}">
+                                    {{ page_num }}
+                                </a>
+                            </li>
+                        {% endif %}
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">...</span>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('admin.list_users', page=pagination.next_num, search=search) }}">
+                            Next <i class="fa fa-chevron-right"></i>
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+{% else %}
+    <div class="alert alert-info">
+        <i class="fa fa-info-circle"></i> No users found.
+        <a href="{{ url_for('admin.add_user') }}" class="alert-link">Create one now</a>.
+    </div>
+{% endif %}
+{% endblock %}

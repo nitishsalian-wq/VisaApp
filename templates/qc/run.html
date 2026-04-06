@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Run QC Check{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fa fa-check-square"></i> Run QC Check
+                </h4>
+            </div>
+
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fa fa-info-circle"></i> <strong>Applicant:</strong> {{ applicant.full_name }}<br>
+                    <i class="fa fa-passport"></i> <strong>Visa Type:</strong> {{ applicant.visa_type|upper }}<br>
+                    <i class="fa fa-file"></i> <strong>Documents:</strong> {{ applicant.documents|length }}
+                </div>
+
+                {% if applicant.documents %}
+                    <div class="alert alert-warning">
+                        <i class="fa fa-exclamation-triangle"></i> This will run a comprehensive quality check on all uploaded documents. The process may take a minute or two.
+                    </div>
+
+                    <h5 class="mb-3">Documents to be checked:</h5>
+                    <ul class="list-group mb-4">
+                        {% for doc in applicant.documents %}
+                            <li class="list-group-item">
+                                <i class="fa fa-file-pdf-o"></i>
+                                <strong>{{ doc.original_filename }}</strong>
+                                <span class="badge bg-secondary float-end">{{ doc.get_doc_type_display() }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+
+                    <form method="POST">
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('applicants.view_applicant', applicant_id=applicant.id) }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fa fa-play"></i> Run QC Check
+                            </button>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="alert alert-danger">
+                        <i class="fa fa-exclamation-circle"></i> No documents have been uploaded for this applicant. Please upload documents first.
+                    </div>
+                    <a href="{{ url_for('applicants.view_applicant', applicant_id=applicant.id) }}" class="btn btn-primary">
+                        <i class="fa fa-arrow-left"></i> Back to Applicant
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

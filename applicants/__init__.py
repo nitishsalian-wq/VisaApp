@@ -1,0 +1,3 @@
+"""
+Applicants module
+"""

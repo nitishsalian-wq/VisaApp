@@ -1,0 +1,29 @@
+name: visadesk
+services:
+  - name: web
+    github:
+      repo: <your-github-username>/<your-repo-name>
+      branch: main
+      deploy_on_push: true
+    build_command: pip install -r requirements.txt && python init_db.py
+    run_command: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 3
+    envs:
+      - key: SECRET_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: ADMIN_PASSWORD
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: FLASK_ENV
+        value: production
+        scope: RUN_AND_BUILD_TIME
+    instance_size_slug: basic-xs
+    instance_count: 1
+    http_port: 8080
+databases:
+  - engine: PG
+    name: visadesk-db
+    version: "16"

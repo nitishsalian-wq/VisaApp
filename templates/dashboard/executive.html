@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Executive Performance{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2><i class="fa fa-users"></i> Team Performance</h2>
+        <p class="text-muted">Executive performance metrics and statistics</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-secondary">
+            <i class="fa fa-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<!-- Performance Table -->
+<div class="table-responsive">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Executive</th>
+                <th>Applicants</th>
+                <th>QC Runs</th>
+                <th>QC Passed</th>
+                <th>Pass Rate</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if executives %}
+                {% for exec in executives %}
+                    <tr>
+                        <td>
+                            <strong>{{ exec.full_name }}</strong>
+                            <br>
+                            <small class="text-muted">@{{ exec.username }}</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-info fs-6">{{ exec.applicant_count }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-primary fs-6">{{ exec.qc_run_count }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-success fs-6">{{ exec.qc_passed_count }}</span>
+                        </td>
+                        <td>
+                            <strong style="color: {{ '#27ae60' if exec.pass_rate >= 80 else '#f39c12' if exec.pass_rate >= 50 else '#e74c3c' }};">
+                                {{ exec.pass_rate }}%
+                            </strong>
+                            <div class="progress mt-2" style="height: 20px;">
+                                <div class="progress-bar bg-{{ 'success' if exec.pass_rate >= 80 else 'warning' if exec.pass_rate >= 50 else 'danger' }}"
+                                     role="progressbar"
+                                     style="width: {{ exec.pass_rate }}%"
+                                     aria-valuenow="{{ exec.pass_rate }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('applicants.list_applicants') }}?search={{ exec.username }}" class="btn btn-sm btn-outline-primary">
+                                <i class="fa fa-eye"></i> View Applicants
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted">
+                        No executives with activity yet.
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Summary Stats -->
+{% if executives %}
+    <div class="row mt-5">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h6>Total Executives</h6>
+                <p class="stat-value">{{ executives|length }}</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h6>Total Applicants</h6>
+                <p class="stat-value">{{ executives|map(attribute='applicant_count')|sum }}</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h6>Total QC Runs</h6>
+                <p class="stat-value">{{ executives|map(attribute='qc_run_count')|sum }}</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h6>Team Pass Rate</h6>
+                <p class="stat-value">
+                    {% set total_qc = executives|map(attribute='qc_run_count')|sum %}
+                    {% set total_passed = executives|map(attribute='qc_passed_count')|sum %}
+                    {{ (total_passed / total_qc * 100)|round(1) if total_qc > 0 else 0 }}%
+                </p>
+            </div>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

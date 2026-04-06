@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Applicants{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2><i class="fa fa-users"></i> Applicants</h2>
+        {% if not current_user.is_admin() %}
+            <p class="text-muted">Your visa applicants</p>
+        {% endif %}
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('applicants.add_applicant') }}" class="btn btn-primary">
+            <i class="fa fa-plus"></i> New Applicant
+        </a>
+    </div>
+</div>
+
+<!-- Search and Filter -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="GET" class="row g-3">
+                    <div class="col-md-6">
+                        <input type="text" class="form-control" name="search" placeholder="Search by name or passport..." value="{{ search }}">
+                    </div>
+                    <div class="col-md-4">
+                        <select class="form-select" name="status">
+                            <option value="">All Statuses</option>
+                            <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+                            <option value="documents_uploaded" {% if status_filter == 'documents_uploaded' %}selected{% endif %}>Documents Uploaded</option>
+                            <option value="qc_passed" {% if status_filter == 'qc_passed' %}selected{% endif %}>QC Passed</option>
+                            <option value="qc_failed" {% if status_filter == 'qc_failed' %}selected{% endif %}>QC Failed</option>
+                            <option value="submitted" {% if status_filter == 'submitted' %}selected{% endif %}>Submitted</option>
+                            <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+                            <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-outline-primary w-100">Search</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Applicants Table -->
+{% if applicants %}
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Passport</th>
+                    <th>Visa Type</th>
+                    <th>Status</th>
+                    <th>Documents</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for applicant in applicants %}
+                    <tr>
+                        <td>
+                            <strong>{{ applicant.full_name }}</strong>
+                            {% if applicant.nationality %}
+                                <br><small class="text-muted">{{ applicant.nationality }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if applicant.passport_number %}
+                                <code>{{ applicant.passport_number }}</code>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if applicant.visa_type %}
+                                <span class="badge bg-info">{{ applicant.visa_type.upper() }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ applicant.get_status_badge_class() }}">
+                                {{ applicant.get_status_display() }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ applicant.documents|length }}</span>
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ applicant.created_at.strftime('%b %d, %Y') }}</small>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('applicants.view_applicant', applicant_id=applicant.id) }}" class="btn btn-sm btn-outline-primary" title="View Details">
+                                <i class="fa fa-eye"></i>
+                            </a>
+                            <a href="{{ url_for('applicants.edit_applicant', applicant_id=applicant.id) }}" class="btn btn-sm btn-outline-secondary" title="Edit">
+                                <i class="fa fa-edit"></i>
+                            </a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if pagination.pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if pagination.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('applicants.list_applicants', page=pagination.prev_num, search=search, status=status_filter) }}">
+                            <i class="fa fa-chevron-left"></i> Previous
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% for page_num in pagination.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num == pagination.page %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_num }}</span>
+                            </li>
+                        {% else %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('applicants.list_applicants', page=page_num, search=search, status=status_filter) }}">
+                                    {{ page_num }}
+                                </a>
+                            </li>
+                        {% endif %}
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">...</span>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if pagination.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('applicants.list_applicants', page=pagination.next_num, search=search, status=status_filter) }}">
+                            Next <i class="fa fa-chevron-right"></i>
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+{% else %}
+    <div class="alert alert-info" role="alert">
+        <i class="fa fa-info-circle"></i> No applicants found.
+        <a href="{{ url_for('applicants.add_applicant') }}" class="alert-link">Create one now</a>.
+    </div>
+{% endif %}
+{% endblock %}

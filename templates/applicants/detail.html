@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}{{ applicant.full_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2>{{ applicant.full_name }}</h2>
+        <p class="text-muted mb-0">
+            <i class="fa fa-passport"></i> {{ applicant.visa_type|upper if applicant.visa_type else 'Unknown' }} Visa
+            <span class="badge bg-{{ applicant.get_status_badge_class() }} ms-2">{{ applicant.get_status_display() }}</span>
+        </p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('applicants.edit_applicant', applicant_id=applicant.id) }}" class="btn btn-outline-primary">
+            <i class="fa fa-edit"></i> Edit
+        </a>
+        <a href="{{ url_for('applicants.list_applicants') }}" class="btn btn-outline-secondary">
+            <i class="fa fa-arrow-left"></i> Back
+        </a>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="card">
+    <div class="card-body">
+        <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="details-tab" data-bs-toggle="tab" data-bs-target="#details" type="button" role="tab">
+                    <i class="fa fa-user"></i> Details
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="documents-tab" data-bs-toggle="tab" data-bs-target="#documents" type="button" role="tab">
+                    <i class="fa fa-file"></i> Documents <span class="badge bg-secondary">{{ documents|length }}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="qc-tab" data-bs-toggle="tab" data-bs-target="#qc" type="button" role="tab">
+                    <i class="fa fa-check-square"></i> QC History <span class="badge bg-secondary">{{ qc_reports|length }}</span>
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content mt-4">
+            <!-- Details Tab -->
+            <div class="tab-pane fade show active" id="details" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-sm-4">Full Name:</dt>
+                            <dd class="col-sm-8">{{ applicant.full_name }}</dd>
+
+                            <dt class="col-sm-4">Passport:</dt>
+                            <dd class="col-sm-8">
+                                {% if applicant.passport_number %}
+                                    <code>{{ applicant.passport_number }}</code>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </dd>
+
+                            <dt class="col-sm-4">Nationality:</dt>
+                            <dd class="col-sm-8">{{ applicant.nationality or '-' }}</dd>
+
+                            <dt class="col-sm-4">Date of Birth:</dt>
+                            <dd class="col-sm-8">
+                                {% if applicant.date_of_birth %}
+                                    {{ applicant.date_of_birth.strftime('%B %d, %Y') }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </dd>
+                        </dl>
+                    </div>
+
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-sm-4">Visa Type:</dt>
+                            <dd class="col-sm-8">
+                                <span class="badge bg-info">{{ applicant.visa_type|upper if applicant.visa_type else '-' }}</span>
+                            </dd>
+
+                            <dt class="col-sm-4">Destination:</dt>
+                            <dd class="col-sm-8">{{ applicant.destination_country or '-' }}</dd>
+
+                            <dt class="col-sm-4">Purpose:</dt>
+                            <dd class="col-sm-8">{{ applicant.visa_purpose|capitalize if applicant.visa_purpose else '-' }}</dd>
+
+                            <dt class="col-sm-4">Status:</dt>
+                            <dd class="col-sm-8">
+                                <span class="badge bg-{{ applicant.get_status_badge_class() }}">{{ applicant.get_status_display() }}</span>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+
+                {% if applicant.notes %}
+                    <div class="mt-4 p-3 bg-light rounded">
+                        <h6>Notes:</h6>
+                        <p class="mb-0">{{ applicant.notes }}</p>
+                    </div>
+                {% endif %}
+
+                <div class="mt-4 text-muted small">
+                    <p>
+                        <i class="fa fa-clock"></i> Created: {{ applicant.created_at.strftime('%B %d, %Y at %H:%M') }} by {{ applicant.creator.full_name or applicant.creator.username }}<br>
+                        <i class="fa fa-sync"></i> Last Updated: {{ applicant.updated_at.strftime('%B %d, %Y at %H:%M') }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Documents Tab -->
+            <div class="tab-pane fade" id="documents" role="tabpanel">
+                <div class="mb-3">
+                    <form method="POST" action="{{ url_for('applicants.upload_document', applicant_id=applicant.id) }}" enctype="multipart/form-data">
+                        <div class="upload-area" id="uploadArea">
+                            <input type="file" id="fileInput" name="file" style="display: none;" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.txt">
+                            <i class="fa fa-cloud-upload" style="font-size: 2rem; color: #95a5a6; margin-bottom: 1rem; display: block;"></i>
+                            <p><strong>Click or drag files here to upload</strong></p>
+                            <p class="text-muted small">Supported: PDF, JPG, PNG, DOC, DOCX, TXT (Max 50MB)</p>
+                        </div>
+                    </form>
+                </div>
+
+                {% if documents %}
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>File Name</th>
+                                <th>Type</th>
+                                <th>Uploaded</th>
+                                <th>By</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for doc in documents %}
+                                <tr>
+                                    <td>
+                                        <i class="fa fa-file-pdf-o"></i> {{ doc.original_filename }}
+                                    </td>
+                                    <td>
+                                        <small class="badge bg-secondary">{{ doc.get_doc_type_display() }}</small>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ doc.uploaded_at.strftime('%b %d, %Y') }}</small>
+                                    </td>
+                                    <td>
+                                        <small>{{ doc.uploader.full_name or doc.uploader.username }}</small>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('applicants.download_document', applicant_id=applicant.id, doc_id=doc.id) }}" class="btn btn-sm btn-outline-primary" title="Download">
+                                            <i class="fa fa-download"></i>
+                                        </a>
+                                        <form method="POST" action="{{ url_for('applicants.delete_document', applicant_id=applicant.id, doc_id=doc.id) }}" style="display: inline;">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete" onclick="return confirm('Are you sure?');">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+
+                    {% if applicant.status == 'documents_uploaded' or applicant.status == 'qc_failed' %}
+                        <div class="mt-3">
+                            <a href="{{ url_for('qc.run_qc_check', applicant_id=applicant.id) }}" class="btn btn-success">
+                                <i class="fa fa-play"></i> Run QC Check
+                            </a>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-info">
+                        No documents uploaded yet. Upload the visa application and supporting documents.
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- QC History Tab -->
+            <div class="tab-pane fade" id="qc" role="tabpanel">
+                {% if qc_reports %}
+                    <div id="qcHistoryContainer">
+                        {% for report in qc_reports %}
+                            <div class="card mb-3">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>QC Report #{{ report.id }}</strong>
+                                        <span class="badge bg-{{ report.get_status_badge_class() }} ms-2">{{ report.overall_status|upper }}</span>
+                                    </div>
+                                    <small class="text-muted">{{ report.run_at.strftime('%B %d, %Y at %H:%M') }}</small>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <p>
+                                                <strong>Pass Rate:</strong>
+                                                <span class="badge bg-success">{{ report.get_pass_rate() }}%</span>
+                                            </p>
+                                            <p class="mb-0">
+                                                <strong>Checks:</strong><br>
+                                                Passed: <span class="text-success">{{ report.passed_checks }}</span> |
+                                                Failed: <span class="text-danger">{{ report.failed_checks }}</span> |
+                                                Total: {{ report.total_checks }}
+                                            </p>
+                                        </div>
+                                        <div class="col-md-6 text-end">
+                                            <p class="mb-0">
+                                                <strong>Run By:</strong> {{ report.run_by.full_name or report.run_by.username }}
+                                            </p>
+                                            <a href="{{ url_for('qc.view_report', report_id=report.id) }}" class="btn btn-sm btn-outline-primary mt-2">
+                                                <i class="fa fa-eye"></i> View Full Report
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fa fa-info-circle"></i> No QC checks have been run for this applicant yet.
+                        <a href="{{ url_for('applicants.view_applicant', applicant_id=applicant.id) }}#documents" class="alert-link">Upload documents and run a check</a>.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="applicantId" value="{{ applicant.id }}">
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+
+    if (uploadArea && fileInput) {
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', function() {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            fileInput.files = e.dataTransfer.files;
+            if (fileInput.files.length > 0) {
+                const form = fileInput.closest('form');
+                form.submit();
+            }
+        });
+
+        uploadArea.addEventListener('click', function() {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', function() {
+            if (this.files.length > 0) {
+                const form = this.closest('form');
+                form.submit();
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
