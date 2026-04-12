@@ -2,14 +2,15 @@
 Applicant management routes for VisaDesk
 """
 import os
+import json
 from datetime import datetime
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, send_file, jsonify
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from sqlalchemy import desc
 from extensions import db
 from models import Applicant, Document, QCReport
-from qc.extractor import detect_document_type, extract_text_from_pdf
+from qc.extractor import detect_document_type, extract_text_from_pdf, extract_passport_fields, extract_fields
 
 applicants_bp = Blueprint('applicants', __name__, url_prefix='/applicants')
 
@@ -66,6 +67,66 @@ def list_applicants():
     )
 
 
+@applicants_bp.route('/extract-passport', methods=['POST'])
+@login_required
+def extract_passport():
+    """AJAX endpoint: extract fields from an uploaded passport PDF/image"""
+    file = request.files.get('passport_file')
+    if not file or not file.filename:
+        return jsonify({'error': 'No file provided'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'File type not allowed'}), 400
+
+    # Save to a temp location for extraction
+    temp_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], '_temp')
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_path = os.path.join(temp_dir, secure_filename(file.filename))
+    file.save(temp_path)
+
+    extracted = {}
+    try:
+        if temp_path.lower().endswith('.pdf'):
+            pages = extract_text_from_pdf(temp_path)
+            fields = extract_passport_fields(pages)
+        else:
+            # For image files, try extract_fields which handles various formats
+            fields = extract_fields(temp_path)
+
+        # Map extracted fields to form field names
+        extracted['surname'] = fields.get('surname', '').upper()
+        extracted['given_names'] = fields.get('first_name', '')
+        extracted['passport_number'] = fields.get('passport_number', '')
+        extracted['nationality'] = fields.get('nationality', '')
+        extracted['sex'] = fields.get('sex', '')
+        extracted['place_of_birth'] = fields.get('place_of_birth', '')
+
+        # Parse dates into YYYY-MM-DD for date inputs
+        for date_field, extracted_key in [
+            ('date_of_birth_parsed', 'date_of_birth'),
+            ('passport_issue_date_parsed', 'passport_issue_date'),
+            ('passport_expiry_date_parsed', 'passport_expiry_date'),
+        ]:
+            dt = fields.get(date_field)
+            if dt:
+                extracted[extracted_key] = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)
+            else:
+                # Try the raw string value
+                raw = fields.get(extracted_key.replace('_parsed', ''), '')
+                extracted[extracted_key] = raw
+
+    except Exception as e:
+        extracted['_error'] = f'Extraction partial: {str(e)}'
+    finally:
+        # Clean up temp file
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+
+    return jsonify(extracted)
+
+
 @applicants_bp.route('/new', methods=['GET', 'POST'])
 @login_required
 def add_applicant():
@@ -82,7 +143,12 @@ def add_applicant():
 
         passport_number = request.form.get('passport_number', '').strip()
         nationality = request.form.get('nationality', '').strip()
+        sex = request.form.get('sex', '').strip()
+        place_of_birth = request.form.get('place_of_birth', '').strip()
         date_of_birth = request.form.get('date_of_birth', '').strip()
+        passport_issue_date = request.form.get('passport_issue_date', '').strip()
+        passport_expiry_date = request.form.get('passport_expiry_date', '').strip()
+        date_of_travel = request.form.get('date_of_travel', '').strip()
         visa_type = request.form.get('visa_type', '').strip()
         destination_country = request.form.get('destination_country', '').strip()
         visa_purpose = request.form.get('visa_purpose', '').strip()
@@ -100,6 +166,13 @@ def add_applicant():
             flash('Corporate name is required for corporate clients.', 'danger')
             return render_template('applicants/form.html', applicant=None)
 
+        # Helper to parse dates safely
+        def parse_date_safe(d):
+            try:
+                return datetime.strptime(d, '%Y-%m-%d').date() if d else None
+            except ValueError:
+                return None
+
         # Build full_name in passport format: SURNAME, Given Names
         full_name = f"{surname.upper()}, {given_names}"
 
@@ -112,7 +185,12 @@ def add_applicant():
             full_name=full_name,
             passport_number=passport_number or None,
             nationality=nationality or None,
-            date_of_birth=datetime.strptime(date_of_birth, '%Y-%m-%d').date() if date_of_birth else None,
+            sex=sex or None,
+            place_of_birth=place_of_birth or None,
+            date_of_birth=parse_date_safe(date_of_birth),
+            passport_issue_date=parse_date_safe(passport_issue_date),
+            passport_expiry_date=parse_date_safe(passport_expiry_date),
+            date_of_travel=parse_date_safe(date_of_travel),
             visa_type=visa_type,
             destination_country=destination_country or None,
             visa_purpose=visa_purpose or None,
@@ -191,7 +269,12 @@ def edit_applicant(applicant_id):
         given_names = request.form.get('given_names', '').strip()
         passport_number = request.form.get('passport_number', '').strip()
         nationality = request.form.get('nationality', '').strip()
+        sex = request.form.get('sex', '').strip()
+        place_of_birth = request.form.get('place_of_birth', '').strip()
         date_of_birth = request.form.get('date_of_birth', '').strip()
+        passport_issue_date = request.form.get('passport_issue_date', '').strip()
+        passport_expiry_date = request.form.get('passport_expiry_date', '').strip()
+        date_of_travel = request.form.get('date_of_travel', '').strip()
         visa_type = request.form.get('visa_type', '').strip()
         destination_country = request.form.get('destination_country', '').strip()
         visa_purpose = request.form.get('visa_purpose', '').strip()
@@ -205,6 +288,12 @@ def edit_applicant(applicant_id):
             flash('Visa type is required.', 'danger')
             return render_template('applicants/form.html', applicant=applicant)
 
+        def parse_date_safe(d):
+            try:
+                return datetime.strptime(d, '%Y-%m-%d').date() if d else None
+            except ValueError:
+                return None
+
         applicant.client_type = client_type
         applicant.corporate_name = corporate_name or None
         applicant.crm_id = crm_id or None
@@ -213,7 +302,12 @@ def edit_applicant(applicant_id):
         applicant.full_name = f"{surname.upper()}, {given_names}"
         applicant.passport_number = passport_number or None
         applicant.nationality = nationality or None
-        applicant.date_of_birth = datetime.strptime(date_of_birth, '%Y-%m-%d').date() if date_of_birth else None
+        applicant.sex = sex or None
+        applicant.place_of_birth = place_of_birth or None
+        applicant.date_of_birth = parse_date_safe(date_of_birth)
+        applicant.passport_issue_date = parse_date_safe(passport_issue_date)
+        applicant.passport_expiry_date = parse_date_safe(passport_expiry_date)
+        applicant.date_of_travel = parse_date_safe(date_of_travel)
         applicant.visa_type = visa_type
         applicant.destination_country = destination_country or None
         applicant.visa_purpose = visa_purpose or None

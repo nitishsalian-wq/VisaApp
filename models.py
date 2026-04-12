@@ -61,6 +61,11 @@ class Applicant(db.Model):
     passport_number = db.Column(db.String(50), index=True)
     nationality = db.Column(db.String(100))
     date_of_birth = db.Column(db.Date)
+    sex = db.Column(db.String(10))  # 'Male' or 'Female'
+    place_of_birth = db.Column(db.String(100))
+    passport_issue_date = db.Column(db.Date)
+    passport_expiry_date = db.Column(db.Date)
+    date_of_travel = db.Column(db.Date)
     visa_type = db.Column(db.String(50))  # 'schengen', 'uk', etc.
     destination_country = db.Column(db.String(100))
     visa_purpose = db.Column(db.String(100))  # 'tourist', 'business'

@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-md-8 offset-md-2">
+    <div class="col-md-10 offset-md-1">
         <div class="card">
             <div class="card-header">
                 <h4 class="mb-0">
@@ -19,10 +19,10 @@
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data" novalidate>
 
-                    <!-- ── Client Type Section ── -->
+                    <!-- ══ STEP 1: Client Type ══ -->
                     <div class="card bg-light mb-4">
                         <div class="card-body">
-                            <h6 class="card-title text-muted mb-3">Client Information</h6>
+                            <h6 class="card-title text-muted mb-3"><span class="badge bg-primary me-2">1</span> Client Information</h6>
                             <div class="row">
                                 <div class="col-md-4 mb-3">
                                     <label for="client_type" class="form-label">Client Type <span class="text-danger">*</span></label>
@@ -47,16 +47,45 @@
                         </div>
                     </div>
 
-                    <!-- ── Name (Passport Format) ── -->
+                    <!-- ══ STEP 2: Upload Passport ══ -->
                     <div class="card bg-light mb-4">
                         <div class="card-body">
-                            <h6 class="card-title text-muted mb-3">Applicant Name <small class="text-secondary">(as in passport)</small></h6>
+                            <h6 class="card-title text-muted mb-3"><span class="badge bg-primary me-2">2</span> Upload Passport Copy</h6>
+                            <div class="row align-items-end">
+                                <div class="col-md-8 mb-2">
+                                    <input type="file" class="form-control" id="passport_copy" name="passport_copy"
+                                        accept=".pdf,.jpg,.jpeg,.png">
+                                    <div class="text-muted small mt-1">
+                                        <i class="fa fa-info-circle"></i> Upload passport bio page (PDF, JPG, or PNG). Fields below will auto-fill from the passport.
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-2">
+                                    <button type="button" class="btn btn-outline-success w-100" id="extractBtn" onclick="extractPassport()" disabled>
+                                        <span id="extractBtnText"><i class="fa fa-magic"></i> Extract Fields</span>
+                                        <span id="extractSpinner" style="display:none;">
+                                            <span class="spinner-border spinner-border-sm"></span> Extracting...
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="extractionResult" class="mt-2" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- ══ STEP 3: Passport Details (auto-filled, editable) ══ -->
+                    <div class="card bg-light mb-4">
+                        <div class="card-body">
+                            <h6 class="card-title text-muted mb-3">
+                                <span class="badge bg-primary me-2">3</span> Applicant Details
+                                <small class="text-secondary">(as in passport — editable)</small>
+                            </h6>
+
+                            <!-- Name -->
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="surname" class="form-label">Surname / Family Name <span class="text-danger">*</span></label>
                                     <input type="text" class="form-control text-uppercase" id="surname" name="surname" required
-                                        placeholder="e.g. SALIAN"
-                                        style="text-transform: uppercase;"
+                                        placeholder="e.g. SALIAN" style="text-transform: uppercase;"
                                         value="{% if applicant and applicant.surname %}{{ applicant.surname }}{% endif %}">
                                 </div>
                                 <div class="col-md-6 mb-3">
@@ -66,92 +95,116 @@
                                         value="{% if applicant and applicant.given_names %}{{ applicant.given_names }}{% endif %}">
                                 </div>
                             </div>
-                            <div class="text-muted small">
+                            <div class="text-muted small mb-3">
                                 <i class="fa fa-info-circle"></i>
                                 Name will be stored as: <strong id="name_preview">SURNAME, Given Names</strong>
                             </div>
+
+                            <!-- Passport Number, Nationality, Sex -->
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="passport_number" class="form-label">Passport Number</label>
+                                    <input type="text" class="form-control text-uppercase" id="passport_number" name="passport_number"
+                                        style="text-transform: uppercase;"
+                                        value="{% if applicant %}{{ applicant.passport_number or '' }}{% endif %}">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="nationality" class="form-label">Nationality</label>
+                                    <input type="text" class="form-control" id="nationality" name="nationality"
+                                        value="{% if applicant %}{{ applicant.nationality or '' }}{% endif %}">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="sex" class="form-label">Sex</label>
+                                    <select class="form-select" id="sex" name="sex">
+                                        <option value="">-- Select --</option>
+                                        <option value="Male" {% if applicant and applicant.sex == 'Male' %}selected{% endif %}>Male</option>
+                                        <option value="Female" {% if applicant and applicant.sex == 'Female' %}selected{% endif %}>Female</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- DOB, Place of Birth -->
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="date_of_birth" class="form-label">Date of Birth</label>
+                                    <input type="date" class="form-control" id="date_of_birth" name="date_of_birth"
+                                        value="{% if applicant and applicant.date_of_birth %}{{ applicant.date_of_birth.strftime('%Y-%m-%d') }}{% endif %}">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="place_of_birth" class="form-label">Place of Birth</label>
+                                    <input type="text" class="form-control" id="place_of_birth" name="place_of_birth"
+                                        value="{% if applicant %}{{ applicant.place_of_birth or '' }}{% endif %}">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="date_of_travel" class="form-label">Date of Travel <span class="text-danger">*</span></label>
+                                    <input type="date" class="form-control" id="date_of_travel" name="date_of_travel"
+                                        value="{% if applicant and applicant.date_of_travel %}{{ applicant.date_of_travel.strftime('%Y-%m-%d') }}{% endif %}">
+                                </div>
+                            </div>
+
+                            <!-- Passport Issue & Expiry -->
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="passport_issue_date" class="form-label">Passport Issue Date</label>
+                                    <input type="date" class="form-control" id="passport_issue_date" name="passport_issue_date"
+                                        value="{% if applicant and applicant.passport_issue_date %}{{ applicant.passport_issue_date.strftime('%Y-%m-%d') }}{% endif %}">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="passport_expiry_date" class="form-label">Passport Expiry Date</label>
+                                    <input type="date" class="form-control" id="passport_expiry_date" name="passport_expiry_date"
+                                        value="{% if applicant and applicant.passport_expiry_date %}{{ applicant.passport_expiry_date.strftime('%Y-%m-%d') }}{% endif %}">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- ── Passport & Personal Details ── -->
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="passport_number" class="form-label">Passport Number</label>
-                            <input type="text" class="form-control text-uppercase" id="passport_number" name="passport_number"
-                                style="text-transform: uppercase;"
-                                value="{% if applicant %}{{ applicant.passport_number }}{% endif %}">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="nationality" class="form-label">Nationality</label>
-                            <input type="text" class="form-control" id="nationality" name="nationality"
-                                value="{% if applicant %}{{ applicant.nationality }}{% endif %}">
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="date_of_birth" class="form-label">Date of Birth</label>
-                            <input type="date" class="form-control" id="date_of_birth" name="date_of_birth"
-                                value="{% if applicant and applicant.date_of_birth %}{{ applicant.date_of_birth.strftime('%Y-%m-%d') }}{% endif %}">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="visa_type" class="form-label">Visa Type <span class="text-danger">*</span></label>
-                            <select class="form-select" id="visa_type" name="visa_type" required>
-                                <option value="">-- Select --</option>
-                                <option value="schengen" {% if applicant and applicant.visa_type == 'schengen' %}selected{% endif %}>Schengen</option>
-                                <option value="uk" {% if applicant and applicant.visa_type == 'uk' %}selected{% endif %}>UK</option>
-                                <option value="usa" {% if applicant and applicant.visa_type == 'usa' %}selected{% endif %}>USA</option>
-                                <option value="canada" {% if applicant and applicant.visa_type == 'canada' %}selected{% endif %}>Canada</option>
-                                <option value="australia" {% if applicant and applicant.visa_type == 'australia' %}selected{% endif %}>Australia</option>
-                                <option value="other" {% if applicant and applicant.visa_type == 'other' %}selected{% endif %}>Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="destination_country" class="form-label">Destination Country</label>
-                            <input type="text" class="form-control" id="destination_country" name="destination_country"
-                                value="{% if applicant %}{{ applicant.destination_country }}{% endif %}">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="visa_purpose" class="form-label">Visa Purpose</label>
-                            <select class="form-select" id="visa_purpose" name="visa_purpose">
-                                <option value="">-- Select --</option>
-                                <option value="tourist" {% if applicant and applicant.visa_purpose == 'tourist' %}selected{% endif %}>Tourist</option>
-                                <option value="business" {% if applicant and applicant.visa_purpose == 'business' %}selected{% endif %}>Business</option>
-                                <option value="student" {% if applicant and applicant.visa_purpose == 'student' %}selected{% endif %}>Student</option>
-                                <option value="work" {% if applicant and applicant.visa_purpose == 'work' %}selected{% endif %}>Work</option>
-                                <option value="visit_family" {% if applicant and applicant.visa_purpose == 'visit_family' %}selected{% endif %}>Visit Family</option>
-                                <option value="other" {% if applicant and applicant.visa_purpose == 'other' %}selected{% endif %}>Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- ── Passport Upload ── -->
-                    {% if not applicant %}
+                    <!-- ══ STEP 4: Visa Details ══ -->
                     <div class="card bg-light mb-4">
                         <div class="card-body">
-                            <h6 class="card-title text-muted mb-3">Upload Passport Copy</h6>
-                            <div class="mb-2">
-                                <input type="file" class="form-control" id="passport_copy" name="passport_copy"
-                                    accept=".pdf,.jpg,.jpeg,.png">
-                            </div>
-                            <div class="text-muted small">
-                                <i class="fa fa-info-circle"></i> Upload a scan or photo of the passport bio page (PDF, JPG, or PNG). You can also upload later from the applicant detail page.
+                            <h6 class="card-title text-muted mb-3"><span class="badge bg-primary me-2">4</span> Visa Details</h6>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="visa_type" class="form-label">Visa Type <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="visa_type" name="visa_type" required>
+                                        <option value="">-- Select --</option>
+                                        <option value="schengen" {% if applicant and applicant.visa_type == 'schengen' %}selected{% endif %}>Schengen</option>
+                                        <option value="uk" {% if applicant and applicant.visa_type == 'uk' %}selected{% endif %}>UK</option>
+                                        <option value="usa" {% if applicant and applicant.visa_type == 'usa' %}selected{% endif %}>USA</option>
+                                        <option value="canada" {% if applicant and applicant.visa_type == 'canada' %}selected{% endif %}>Canada</option>
+                                        <option value="australia" {% if applicant and applicant.visa_type == 'australia' %}selected{% endif %}>Australia</option>
+                                        <option value="other" {% if applicant and applicant.visa_type == 'other' %}selected{% endif %}>Other</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="destination_country" class="form-label">Destination Country</label>
+                                    <input type="text" class="form-control" id="destination_country" name="destination_country"
+                                        value="{% if applicant %}{{ applicant.destination_country or '' }}{% endif %}">
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label for="visa_purpose" class="form-label">Visa Purpose</label>
+                                    <select class="form-select" id="visa_purpose" name="visa_purpose">
+                                        <option value="">-- Select --</option>
+                                        <option value="tourist" {% if applicant and applicant.visa_purpose == 'tourist' %}selected{% endif %}>Tourist</option>
+                                        <option value="business" {% if applicant and applicant.visa_purpose == 'business' %}selected{% endif %}>Business</option>
+                                        <option value="student" {% if applicant and applicant.visa_purpose == 'student' %}selected{% endif %}>Student</option>
+                                        <option value="work" {% if applicant and applicant.visa_purpose == 'work' %}selected{% endif %}>Work</option>
+                                        <option value="visit_family" {% if applicant and applicant.visa_purpose == 'visit_family' %}selected{% endif %}>Visit Family</option>
+                                        <option value="other" {% if applicant and applicant.visa_purpose == 'other' %}selected{% endif %}>Other</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    {% endif %}
 
-                    <div class="mb-3">
+                    <!-- Notes -->
+                    <div class="mb-4">
                         <label for="notes" class="form-label">Notes</label>
-                        <textarea class="form-control" id="notes" name="notes" rows="3">{% if applicant %}{{ applicant.notes }}{% endif %}</textarea>
+                        <textarea class="form-control" id="notes" name="notes" rows="3">{% if applicant %}{{ applicant.notes or '' }}{% endif %}</textarea>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                         <a href="{{ url_for('applicants.list_applicants') }}" class="btn btn-secondary">Cancel</a>
-                        <button type="submit" class="btn btn-primary">
+                        <button type="submit" class="btn btn-primary btn-lg">
                             {% if applicant %}Update{% else %}Create{% endif %} Applicant
                         </button>
                     </div>
@@ -162,31 +215,115 @@
 </div>
 
 <script>
+/* ── Client Type Toggle ── */
 function toggleClientFields() {
     const clientType = document.getElementById('client_type').value;
-    const corporateField = document.getElementById('corporate_name_field');
-    const crmField = document.getElementById('crm_id_field');
-
-    if (clientType === 'corporate') {
-        corporateField.style.display = 'block';
-        crmField.style.display = 'none';
-    } else {
-        corporateField.style.display = 'none';
-        crmField.style.display = 'block';
-    }
+    document.getElementById('corporate_name_field').style.display = clientType === 'corporate' ? 'block' : 'none';
+    document.getElementById('crm_id_field').style.display = clientType === 'retail' ? 'block' : 'none';
 }
 
+/* ── Name Preview ── */
 function updateNamePreview() {
     const surname = document.getElementById('surname').value.toUpperCase() || 'SURNAME';
     const given = document.getElementById('given_names').value || 'Given Names';
     document.getElementById('name_preview').textContent = surname + ', ' + given;
 }
 
-// Initialize on page load
+/* ── Enable Extract Button when file selected ── */
+document.getElementById('passport_copy').addEventListener('change', function() {
+    document.getElementById('extractBtn').disabled = !this.files.length;
+    // Auto-extract on file select
+    if (this.files.length) {
+        extractPassport();
+    }
+});
+
+/* ── Passport Extraction via AJAX ── */
+function extractPassport() {
+    const fileInput = document.getElementById('passport_copy');
+    if (!fileInput.files.length) return;
+
+    const formData = new FormData();
+    formData.append('passport_file', fileInput.files[0]);
+
+    // Show spinner
+    document.getElementById('extractBtnText').style.display = 'none';
+    document.getElementById('extractSpinner').style.display = 'inline';
+    document.getElementById('extractBtn').disabled = true;
+
+    fetch('{{ url_for("applicants.extract_passport") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        let filledCount = 0;
+
+        // Map extracted data to form fields
+        const fieldMap = {
+            'surname': 'surname',
+            'given_names': 'given_names',
+            'passport_number': 'passport_number',
+            'nationality': 'nationality',
+            'date_of_birth': 'date_of_birth',
+            'place_of_birth': 'place_of_birth',
+            'passport_issue_date': 'passport_issue_date',
+            'passport_expiry_date': 'passport_expiry_date'
+        };
+
+        for (const [key, fieldId] of Object.entries(fieldMap)) {
+            if (data[key]) {
+                const el = document.getElementById(fieldId);
+                if (el) {
+                    el.value = data[key];
+                    el.style.backgroundColor = '#d4edda';  // Light green to show auto-filled
+                    setTimeout(() => { el.style.backgroundColor = ''; }, 3000);
+                    filledCount++;
+                }
+            }
+        }
+
+        // Handle sex dropdown
+        if (data.sex) {
+            const sexEl = document.getElementById('sex');
+            for (let opt of sexEl.options) {
+                if (opt.value.toLowerCase() === data.sex.toLowerCase()) {
+                    sexEl.value = opt.value;
+                    sexEl.style.backgroundColor = '#d4edda';
+                    setTimeout(() => { sexEl.style.backgroundColor = ''; }, 3000);
+                    filledCount++;
+                    break;
+                }
+            }
+        }
+
+        updateNamePreview();
+
+        // Show result message
+        const resultDiv = document.getElementById('extractionResult');
+        if (filledCount > 0) {
+            resultDiv.innerHTML = '<div class="alert alert-success py-2 mb-0"><i class="fa fa-check-circle"></i> Extracted <strong>' + filledCount + ' fields</strong> from passport. Please review and edit if needed.</div>';
+        } else {
+            resultDiv.innerHTML = '<div class="alert alert-warning py-2 mb-0"><i class="fa fa-exclamation-triangle"></i> Could not extract fields automatically. Please fill in manually.</div>';
+        }
+        resultDiv.style.display = 'block';
+    })
+    .catch(error => {
+        const resultDiv = document.getElementById('extractionResult');
+        resultDiv.innerHTML = '<div class="alert alert-danger py-2 mb-0"><i class="fa fa-times-circle"></i> Extraction failed. Please fill fields manually.</div>';
+        resultDiv.style.display = 'block';
+    })
+    .finally(() => {
+        document.getElementById('extractBtnText').style.display = 'inline';
+        document.getElementById('extractSpinner').style.display = 'none';
+        document.getElementById('extractBtn').disabled = false;
+    });
+}
+
+/* ── Initialize ── */
 document.addEventListener('DOMContentLoaded', function() {
     toggleClientFields();
     updateNamePreview();
-
     document.getElementById('surname').addEventListener('input', updateNamePreview);
     document.getElementById('given_names').addEventListener('input', updateNamePreview);
 });
