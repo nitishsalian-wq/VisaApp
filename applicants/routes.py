@@ -67,10 +67,148 @@ def list_applicants():
     )
 
 
+def ocr_passport_text(file_path):
+    """Extract text from a scanned passport using OCR (Tesseract).
+    Handles both image files and scanned PDFs."""
+    import re
+    text = ''
+
+    try:
+        import pytesseract
+        from PIL import Image
+
+        if file_path.lower().endswith('.pdf'):
+            # Convert PDF pages to images, then OCR
+            try:
+                from pdf2image import convert_from_path
+                images = convert_from_path(file_path, dpi=300)
+                for img in images:
+                    text += pytesseract.image_to_string(img) + '\n'
+            except ImportError:
+                pass
+        else:
+            # Direct image OCR
+            img = Image.open(file_path)
+            text = pytesseract.image_to_string(img)
+    except ImportError:
+        pass
+
+    return text
+
+
+def parse_passport_ocr(text):
+    """Parse passport fields from OCR text using regex patterns."""
+    import re
+    fields = {}
+
+    if not text or len(text.strip()) < 10:
+        return fields
+
+    # Try MRZ lines first (machine-readable zone at bottom of passport)
+    mrz_lines = re.findall(r'[A-Z0-9<]{30,}', text)
+    if len(mrz_lines) >= 2:
+        line1 = mrz_lines[0]
+        line2 = mrz_lines[1] if len(mrz_lines) > 1 else ''
+
+        # Line 1: P<COUNTRY_CODE SURNAME<<GIVEN_NAMES
+        if line1.startswith('P') and '<' in line1:
+            parts = line1[5:].split('<<', 1)
+            if len(parts) == 2:
+                fields['surname'] = parts[0].replace('<', ' ').strip()
+                fields['first_name'] = parts[1].replace('<', ' ').strip()
+
+        # Line 2: PASSPORT_NUMBER CHECK DOB CHECK SEX EXPIRY CHECK
+        if len(line2) >= 28:
+            fields['passport_number'] = line2[0:9].replace('<', '').strip()
+
+            # DOB: positions 13-18 in YYMMDD
+            dob_raw = line2[13:19]
+            if dob_raw.isdigit():
+                yy, mm, dd = int(dob_raw[0:2]), int(dob_raw[2:4]), int(dob_raw[4:6])
+                year = 1900 + yy if yy > 30 else 2000 + yy
+                try:
+                    from datetime import date
+                    fields['date_of_birth_parsed'] = date(year, mm, dd)
+                except ValueError:
+                    pass
+
+            # Sex: position 20
+            sex_char = line2[20:21]
+            if sex_char == 'M':
+                fields['sex'] = 'Male'
+            elif sex_char == 'F':
+                fields['sex'] = 'Female'
+
+            # Expiry: positions 21-26 in YYMMDD
+            exp_raw = line2[21:27]
+            if exp_raw.isdigit():
+                yy, mm, dd = int(exp_raw[0:2]), int(exp_raw[2:4]), int(exp_raw[4:6])
+                year = 2000 + yy
+                try:
+                    from datetime import date
+                    fields['passport_expiry_date_parsed'] = date(year, mm, dd)
+                except ValueError:
+                    pass
+
+        # Nationality from line 2 positions 10-12
+        if len(line2) >= 12:
+            nat_code = line2[10:13].replace('<', '')
+            country_map = {
+                'IND': 'Indian', 'USA': 'American', 'GBR': 'British',
+                'CAN': 'Canadian', 'AUS': 'Australian', 'DEU': 'German',
+                'FRA': 'French', 'JPN': 'Japanese', 'CHN': 'Chinese',
+                'PAK': 'Pakistani', 'BGD': 'Bangladeshi', 'LKA': 'Sri Lankan',
+                'NPL': 'Nepalese', 'SGP': 'Singaporean', 'ARE': 'Emirati',
+            }
+            fields['nationality'] = country_map.get(nat_code, nat_code)
+
+    # If MRZ didn't work, try text-based patterns
+    if not fields.get('surname'):
+        m = re.search(r'(?:Surname|Family\s*Name)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
+        if m:
+            fields['surname'] = m.group(1).strip()
+
+    if not fields.get('first_name'):
+        m = re.search(r'(?:Given\s*Names?|First\s*Name)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
+        if m:
+            fields['first_name'] = m.group(1).strip()
+
+    if not fields.get('passport_number'):
+        m = re.search(r'(?:Passport\s*No|Number)\s*[:/]?\s*([A-Z0-9]{6,9})', text, re.IGNORECASE)
+        if m:
+            fields['passport_number'] = m.group(1).strip().upper()
+
+    if not fields.get('place_of_birth'):
+        m = re.search(r'(?:Place\s*of\s*Birth)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
+        if m:
+            fields['place_of_birth'] = m.group(1).strip()
+
+    if not fields.get('date_of_birth_parsed'):
+        m = re.search(r'(?:Date\s*of\s*Birth|DOB)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
+        if m:
+            from qc.extractor import parse_date
+            fields['date_of_birth_parsed'] = parse_date(m.group(1))
+
+    if not fields.get('passport_expiry_date_parsed'):
+        m = re.search(r'(?:Date\s*of\s*Expiry|Valid\s*Until|Expiry)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
+        if m:
+            from qc.extractor import parse_date
+            fields['passport_expiry_date_parsed'] = parse_date(m.group(1))
+
+    if not fields.get('sex'):
+        m = re.search(r'(?:Sex|Gender)\s*[:/]?\s*([MF](?:ale|emale)?)', text, re.IGNORECASE)
+        if m:
+            sex = m.group(1).strip().upper()
+            fields['sex'] = 'Male' if sex.startswith('M') else 'Female'
+
+    return fields
+
+
 @applicants_bp.route('/extract-passport', methods=['POST'])
 @login_required
 def extract_passport():
-    """AJAX endpoint: extract fields from an uploaded passport PDF/image"""
+    """AJAX endpoint: extract fields from an uploaded passport PDF/image.
+    Uses pdfplumber for text PDFs, falls back to OCR for scanned documents."""
     file = request.files.get('passport_file')
     if not file or not file.filename:
         return jsonify({'error': 'No file provided'}), 400
@@ -85,21 +223,26 @@ def extract_passport():
     file.save(temp_path)
 
     extracted = {}
+    fields = {}
     try:
+        # Strategy 1: Try pdfplumber text extraction first
         if temp_path.lower().endswith('.pdf'):
             pages = extract_text_from_pdf(temp_path)
             fields = extract_passport_fields(pages)
-        else:
-            # For image files, try extract_fields which handles various formats
-            fields = extract_fields(temp_path)
+
+        # Strategy 2: If text extraction yielded little, try OCR
+        if not fields.get('surname') and not fields.get('passport_number'):
+            ocr_text = ocr_passport_text(temp_path)
+            if ocr_text and len(ocr_text.strip()) > 10:
+                fields = parse_passport_ocr(ocr_text)
 
         # Map extracted fields to form field names
-        extracted['surname'] = fields.get('surname', '').upper()
-        extracted['given_names'] = fields.get('first_name', '')
-        extracted['passport_number'] = fields.get('passport_number', '')
-        extracted['nationality'] = fields.get('nationality', '')
-        extracted['sex'] = fields.get('sex', '')
-        extracted['place_of_birth'] = fields.get('place_of_birth', '')
+        extracted['surname'] = (fields.get('surname', '') or '').upper()
+        extracted['given_names'] = fields.get('first_name', '') or ''
+        extracted['passport_number'] = (fields.get('passport_number', '') or '').upper()
+        extracted['nationality'] = fields.get('nationality', '') or ''
+        extracted['sex'] = fields.get('sex', '') or ''
+        extracted['place_of_birth'] = fields.get('place_of_birth', '') or ''
 
         # Parse dates into YYYY-MM-DD for date inputs
         for date_field, extracted_key in [
@@ -108,17 +251,14 @@ def extract_passport():
             ('passport_expiry_date_parsed', 'passport_expiry_date'),
         ]:
             dt = fields.get(date_field)
-            if dt:
-                extracted[extracted_key] = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)
-            else:
-                # Try the raw string value
-                raw = fields.get(extracted_key.replace('_parsed', ''), '')
-                extracted[extracted_key] = raw
+            if dt and hasattr(dt, 'strftime'):
+                extracted[extracted_key] = dt.strftime('%Y-%m-%d')
+            elif dt:
+                extracted[extracted_key] = str(dt)
 
     except Exception as e:
-        extracted['_error'] = f'Extraction partial: {str(e)}'
+        extracted['_error'] = f'Extraction error: {str(e)}'
     finally:
-        # Clean up temp file
         try:
             os.remove(temp_path)
         except Exception:
