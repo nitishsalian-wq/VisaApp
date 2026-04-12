@@ -236,27 +236,61 @@ def parse_passport_ocr(text):
         pp = fields['passport_number']
         # Find the line containing the passport number and extract names from it
         for line in text.split('\n'):
-            if pp in line.replace(' ', ''):
-                # Extract name-like words (capitalized words) before the passport number
+            # Match even if spaces differ (OCR can insert/remove spaces)
+            line_nospace = line.replace(' ', '')
+            if pp in line_nospace or pp.replace(' ', '') in line_nospace:
+                # Extract name-like words before the passport number
                 words_before = line.split(pp)[0] if pp in line else line
-                # Clean up separators
-                words_before = re.sub(r'[|]', ' ', words_before)
-                # Find capitalized words that look like names
+                # Clean up separators (pipes, colons, tabs)
+                words_before = re.sub(r'[|:;\t]', ' ', words_before)
+                # Remove single-char noise (M/F gender markers at start)
+                words_before = re.sub(r'^\s*[MF]\s+', '', words_before)
+
+                # Try mixed case names first (e.g. "Nitish Mahendra Salian")
                 name_parts = re.findall(r'[A-Z][a-z]+', words_before)
                 if len(name_parts) >= 2:
                     fields['surname'] = name_parts[-1].upper()
                     fields['first_name'] = ' '.join(name_parts[:-1])
+                    break
+
+                # Try ALL CAPS names (e.g. "NITISH MAHENDRA SALIAN")
+                name_parts = re.findall(r'[A-Z]{2,}', words_before)
+                # Filter out noise like "MR", "MS", single letters
+                name_parts = [p for p in name_parts if len(p) >= 3 and p not in ('MR', 'MRS', 'MS', 'DR')]
+                if len(name_parts) >= 2:
+                    fields['surname'] = name_parts[-1].upper()
+                    fields['first_name'] = ' '.join(p.title() for p in name_parts[:-1])
+                    break
+
+                # Try any word-like tokens at least 3 chars
+                name_parts = re.findall(r'[A-Za-z]{3,}', words_before)
+                name_parts = [p for p in name_parts if p.upper() not in ('MR', 'MRS', 'MS', 'DR', 'THE')]
+                if len(name_parts) >= 2:
+                    fields['surname'] = name_parts[-1].upper()
+                    fields['first_name'] = ' '.join(p.title() for p in name_parts[:-1])
+                    break
                 break
 
     # Also try: find names near passport number in broader context
     if not fields.get('surname'):
-        # Look for "FirstName LastName | PASSPORT_NO" pattern
+        # "FirstName LastName | PASSPORT_NO" or "FirstName LastName 12345678"
         m = re.search(r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*[|,]?\s*\d{7,8}', text)
         if m:
             name_parts = m.group(1).strip().split()
             if len(name_parts) >= 2:
                 fields['surname'] = name_parts[-1].upper()
                 fields['first_name'] = ' '.join(name_parts[:-1])
+
+    # ── Strategy 5: Nationality from text ──
+    if not fields.get('nationality'):
+        m = re.search(r'(?:Nationality|Citizen(?:ship)?)\s*[:/|]?\s*([A-Za-z]+)', text, re.IGNORECASE)
+        if m:
+            fields['nationality'] = m.group(1).strip().title()
+        else:
+            # "INDIAN" or "Indian" standalone near passport context
+            m = re.search(r'\b(Indian|American|British|Canadian|Australian|French|German|Japanese|Chinese|Pakistani|Bangladeshi|Sri Lankan|Nepalese|Singaporean|Emirati)\b', text, re.IGNORECASE)
+            if m:
+                fields['nationality'] = m.group(1).strip().title()
 
     return fields
 
@@ -282,16 +316,92 @@ def extract_passport():
     extracted = {}
     fields = {}
     try:
+        import re as _re
+
+        def _is_valid_field(value):
+            """Check if an extracted field value looks valid (not garbage)."""
+            if not value or len(value.strip()) < 2:
+                return False
+            v = value.strip()
+            # Reject if it contains too many non-alpha characters
+            alpha_count = sum(1 for c in v if c.isalpha())
+            if alpha_count < len(v) * 0.5:
+                return False
+            # Reject if it starts with common noise patterns
+            noise = ['e.g.', 'eg.', 'eg ', 'i.e.', 'etc', 'n/a', 'nil', 'none']
+            if v.lower().startswith(tuple(noise)):
+                return False
+            return True
+
+        def _is_valid_passport_no(value):
+            """Check if passport number looks valid."""
+            if not value or len(value.strip()) < 5:
+                return False
+            v = value.strip()
+            # Should be mostly alphanumeric, 6-9 chars
+            if not _re.match(r'^[A-Z0-9]{6,9}$', v, _re.IGNORECASE):
+                return False
+            return True
+
         # Strategy 1: Try pdfplumber text extraction first
+        pdf_fields = {}
         if temp_path.lower().endswith('.pdf'):
             pages = extract_text_from_pdf(temp_path)
-            fields = extract_passport_fields(pages)
+            pdf_fields = extract_passport_fields(pages)
 
-        # Strategy 2: If text extraction yielded little, try OCR
-        if not fields.get('surname') and not fields.get('passport_number'):
-            ocr_text = ocr_passport_text(temp_path)
-            if ocr_text and len(ocr_text.strip()) > 10:
-                fields = parse_passport_ocr(ocr_text)
+        # Strategy 2: Always try OCR as well for comparison/fallback
+        ocr_fields = {}
+        ocr_text = ocr_passport_text(temp_path)
+        if ocr_text and len(ocr_text.strip()) > 10:
+            ocr_fields = parse_passport_ocr(ocr_text)
+
+        # Merge: prefer pdfplumber if valid, otherwise use OCR
+        # For each key, pick the better result
+        all_keys = set(list(pdf_fields.keys()) + list(ocr_fields.keys()))
+        for key in all_keys:
+            if key.startswith('_'):
+                continue
+            pdf_val = pdf_fields.get(key)
+            ocr_val = ocr_fields.get(key)
+
+            if key in ('surname', 'first_name', 'full_name'):
+                # For name fields, validate quality
+                if _is_valid_field(str(pdf_val)) if pdf_val else False:
+                    fields[key] = pdf_val
+                elif ocr_val:
+                    fields[key] = ocr_val
+            elif key == 'passport_number':
+                if _is_valid_passport_no(str(pdf_val)) if pdf_val else False:
+                    fields[key] = pdf_val
+                elif _is_valid_passport_no(str(ocr_val)) if ocr_val else False:
+                    fields[key] = ocr_val
+            elif key.endswith('_parsed'):
+                # For dates, prefer whichever has a valid date object
+                if pdf_val and hasattr(pdf_val, 'strftime'):
+                    fields[key] = pdf_val
+                elif ocr_val and hasattr(ocr_val, 'strftime'):
+                    fields[key] = ocr_val
+                elif pdf_val:
+                    fields[key] = pdf_val
+                elif ocr_val:
+                    fields[key] = ocr_val
+            else:
+                # For other fields (nationality, sex, place_of_birth, etc.)
+                if pdf_val and str(pdf_val).strip():
+                    fields[key] = pdf_val
+                elif ocr_val and str(ocr_val).strip():
+                    fields[key] = ocr_val
+
+        # Clean up surname — remove common noise prefixes
+        surname = fields.get('surname', '') or ''
+        surname = _re.sub(r'^(?:e\.?g\.?\s*)', '', surname, flags=_re.IGNORECASE).strip()
+        fields['surname'] = surname
+
+        # Clean up given names
+        given = fields.get('first_name', '') or ''
+        # Remove non-alpha noise (parentheses, punctuation etc.)
+        given = _re.sub(r'[^A-Za-z\s\-]', '', given).strip()
+        fields['first_name'] = given
 
         # Map extracted fields to form field names
         extracted['surname'] = (fields.get('surname', '') or '').upper()
@@ -312,6 +422,10 @@ def extract_passport():
                 extracted[extracted_key] = dt.strftime('%Y-%m-%d')
             elif dt:
                 extracted[extracted_key] = str(dt)
+
+        # Count how many fields were extracted (for the success message)
+        filled = sum(1 for k, v in extracted.items() if v and not k.startswith('_'))
+        extracted['_field_count'] = filled
 
     except Exception as e:
         extracted['_error'] = f'Extraction error: {str(e)}'
