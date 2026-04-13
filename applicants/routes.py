@@ -220,28 +220,37 @@ def parse_passport_ocr(text):
     #   "Hindi_garbage / Given Names)\n\nHARISH GOVINDHAIAH\n"
     label_fields = {}
 
+    # Surname — look for explicit "Surname" label FIRST
+    # In Indian passports, surname field can be blank. Only set surname
+    # if the "Surname" label exists AND has a real value after it.
+    # We look for "Surname" but NOT when it's part of "/ Surname" on a
+    # line that also says "Given Names" (which is the Hindi+English label line)
+    surname_val = None
+    for i, line in enumerate(lines):
+        if re.search(r'\bSurname\b', line, re.IGNORECASE):
+            # Skip if this line also contains "Given Name" — it's the label line
+            if re.search(r'Given\s*Name', line, re.IGNORECASE):
+                continue
+            surname_val = get_next_value([line] + lines[i+1:i+4], r'\bSurname\b')
+            break
+    has_explicit_surname = False
+    if surname_val:
+        surname_clean = re.sub(r'[^A-Za-z\s]', '', surname_val).strip()
+        # Reject if it contains other field labels (means no surname value exists)
+        if surname_clean and len(surname_clean) >= 2 and re.match(r'^[A-Za-z\s]+$', surname_clean):
+            lower = surname_clean.lower()
+            if not any(kw in lower for kw in ['given', 'name', 'date', 'birth', 'sex', 'place']):
+                label_fields['surname'] = surname_clean.strip().upper()
+                has_explicit_surname = True
+
     # Given Names — the main name field in Indian passports
-    # Search for "Given Name" or "Given Names" label
     val = get_next_value(lines, r'Given\s*Names?')
     if val:
         name_clean = re.sub(r'[^A-Za-z\s]', '', val).strip()
         if name_clean and len(name_clean) >= 3:
-            parts = name_clean.split()
-            if len(parts) >= 2:
-                # Indian passport "Given Names" = "FIRSTNAME FATHERSNAME"
-                label_fields['surname'] = parts[0].upper()
-                label_fields['first_name'] = ' '.join(parts[1:])
-            elif parts:
-                label_fields['first_name'] = parts[0]
-
-    # Surname — look for explicit "Surname" label (may override above)
-    val = get_next_value(lines, r'Surname')
-    if val:
-        surname_clean = re.sub(r'[^A-Za-z\s]', '', val).strip()
-        if surname_clean and len(surname_clean) >= 2 and re.match(r'^[A-Za-z\s]+$', surname_clean):
-            # Only use if it looks like a real surname (not "Given Names" text)
-            if 'given' not in surname_clean.lower() and 'name' not in surname_clean.lower():
-                label_fields['surname'] = surname_clean.split()[0].upper()
+            # Put the FULL value from "Given Names" into first_name
+            # Do NOT split it — the passport shows exactly what goes here
+            label_fields['first_name'] = name_clean
 
     # Date of Birth — scan nearby lines for a date pattern
     dob_str, sex_from_dob = find_date_near_label(lines, r'Date\s*of\s*Birth|DOB')
@@ -316,13 +325,33 @@ def parse_passport_ocr(text):
 
     # ── Fallback strategies for remaining empty fields ──
 
-    # Nationality
+    # Nationality — multiple approaches
     if not fields.get('nationality'):
+        # Try 1: explicit nationality word in text
         m = re.search(r'\b(Indian|American|British|Canadian|Australian|French|German|Japanese|Chinese|Pakistani|Bangladeshi|Sri Lankan|Nepalese|Singaporean|Emirati)\b', text, re.IGNORECASE)
         if m:
             fields['nationality'] = m.group(1).strip().title()
-        elif mrz_fields.get('nationality'):
+
+    if not fields.get('nationality'):
+        # Try 2: MRZ nationality code (may be in garbled MRZ line)
+        if mrz_fields.get('nationality'):
             fields['nationality'] = mrz_fields['nationality']
+
+    if not fields.get('nationality'):
+        # Try 3: Find "IND", "GBR", "USA" etc. anywhere in text
+        # (OCR may garble MRZ but country codes are short and survive)
+        country_map = {
+            'IND': 'Indian', 'USA': 'American', 'GBR': 'British',
+            'CAN': 'Canadian', 'AUS': 'Australian', 'DEU': 'German',
+            'FRA': 'French', 'JPN': 'Japanese', 'CHN': 'Chinese',
+            'PAK': 'Pakistani', 'BGD': 'Bangladeshi', 'LKA': 'Sri Lankan',
+            'NPL': 'Nepalese', 'SGP': 'Singaporean', 'ARE': 'Emirati',
+        }
+        for code, nationality in country_map.items():
+            # Look for the code surrounded by non-alpha chars (in MRZ context)
+            if re.search(r'(?<![A-Z])' + code + r'(?![A-Z])', text):
+                fields['nationality'] = nationality
+                break
 
     # Passport number: letter + 7 digits or 7-8 digits standalone
     if not fields.get('passport_number'):
