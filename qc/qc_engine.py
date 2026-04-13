@@ -1192,6 +1192,103 @@ def _make_summary(checks, visa_fields, visa_purpose, label=''):
     }
 
 
+def _categorize_checks(checks):
+    """Organize flat check results into categories for display.
+
+    Maps check fields to human-readable categories and enriches each check
+    with 'name', 'description', 'details', and 'suggestion' for the template.
+    """
+    category_map = {
+        'Required Documents': ['Required Documents', 'Missing Document'],
+        'Application Completeness': ['Completeness', 'Missing Field', 'Application Date'],
+        'Applicant Name': ['Applicant Name', 'Applicant Name (Passport)',
+                           'Applicant Name (Covering Letter)', 'Applicant Name (Invitation)',
+                           'Applicant Name (Flight Ticket)'],
+        'Date of Birth': ['Date of Birth', 'DOB'],
+        'Passport Details': ['Passport Number', 'Passport Validity', 'Passport Issue Date',
+                             'Passport Expiry', 'Passport Dates'],
+        'Gender Consistency': ['Gender', 'Sex'],
+        'Travel Dates': ['Travel Dates', 'Travel Date', 'Flight Dates', 'Departure Date',
+                         'Return Date', 'Duration of Stay'],
+    }
+
+    # Build reverse lookup: field_name → category
+    field_to_cat = {}
+    for cat, fields in category_map.items():
+        for f in fields:
+            field_to_cat[f.lower()] = cat
+
+    categorized = {}
+    for check in checks:
+        field = check.get('field', 'Other')
+
+        # Find category by matching field name
+        cat = 'Other Checks'
+        for key, mapped_cat in field_to_cat.items():
+            if key in field.lower():
+                cat = mapped_cat
+                break
+
+        if cat not in categorized:
+            categorized[cat] = []
+
+        # Build display-friendly check object
+        display_check = {
+            'name': check.get('field', 'Unknown Check'),
+            'status': check.get('status', 'info'),
+            'description': check.get('message', ''),
+            'details': '',
+            'suggestion': '',
+        }
+
+        # Build detailed comparison info
+        visa_val = check.get('visa_value', '')
+        doc_val = check.get('doc_value', '')
+        doc_src = check.get('doc_source', '')
+
+        if check['status'] == 'fail':
+            # Build specific "what's wrong + how to fix" detail
+            if visa_val and doc_val:
+                display_check['details'] = (
+                    f'Visa application shows: "{visa_val}" — '
+                    f'{doc_src} shows: "{doc_val}"'
+                )
+                display_check['suggestion'] = (
+                    f'Correct the visa application to match the {doc_src}. '
+                    f'Change "{visa_val}" to "{doc_val}".'
+                )
+            elif visa_val:
+                display_check['details'] = f'Visa application shows: "{visa_val}"'
+                display_check['suggestion'] = check.get('message', 'Please review and correct this field.')
+            else:
+                display_check['suggestion'] = check.get('message', 'Please review this check.')
+
+        elif check['status'] == 'warning':
+            if visa_val:
+                display_check['details'] = f'Value found: "{visa_val}"'
+            display_check['suggestion'] = check.get('message', '')
+
+        elif check['status'] == 'pass':
+            if visa_val and doc_val and doc_src:
+                display_check['details'] = (
+                    f'Visa: "{visa_val}" matches {doc_src}: "{doc_val}"'
+                )
+            elif visa_val:
+                display_check['details'] = f'Value: "{visa_val}"'
+
+        categorized[cat].append(display_check)
+
+    # Sort categories: put failures-heavy categories first
+    def cat_sort_key(cat_name):
+        checks_list = categorized[cat_name]
+        fail_count = sum(1 for c in checks_list if c['status'] == 'fail')
+        warn_count = sum(1 for c in checks_list if c['status'] == 'warning')
+        return (-fail_count, -warn_count, cat_name)
+
+    sorted_cats = dict(sorted(categorized.items(), key=lambda x: cat_sort_key(x[0])))
+    return sorted_cats
+
+
 def run_qc(visa_fields, supporting_doc_fields_list, visa_purpose='tourist', check_type='application'):
     """Run QC checks and return a structured report.
 
@@ -1216,29 +1313,26 @@ def run_qc(visa_fields, supporting_doc_fields_list, visa_purpose='tourist', chec
         all_results.extend(check_gender_consistency(visa_fields, supporting_doc_fields_list))
         all_results.extend(check_travel_dates(visa_fields, supporting_doc_fields_list))
 
-        return {
-            'summary': _make_summary(all_results, visa_fields, visa_purpose, 'Visa Application QC'),
-            'checks': all_results,
-            'visa_fields': {k: v for k, v in visa_fields.items() if not k.startswith('_') and not k.endswith('_parsed')},
-            'supporting_docs_count': len(supporting_doc_fields_list),
-        }
-
     elif check_type == 'covering':
-        # ─── Covering Letter QC ──────────────────────────────
         all_results = check_covering_letter(visa_fields, supporting_doc_fields_list, visa_purpose)
 
-        return {
-            'summary': _make_summary(all_results, visa_fields, visa_purpose, 'Covering Letter QC'),
-            'checks': all_results,
-            'supporting_docs_count': len(supporting_doc_fields_list),
-        }
-
     elif check_type == 'invitation':
-        # ─── Invitation Letter QC ────────────────────────────
         all_results = check_invitation_letter(visa_fields, supporting_doc_fields_list, visa_purpose)
 
-        return {
-            'summary': _make_summary(all_results, visa_fields, visa_purpose, 'Invitation Letter QC'),
-            'checks': all_results,
-            'supporting_docs_count': len(supporting_doc_fields_list),
-        }
+    summary = _make_summary(all_results, visa_fields, visa_purpose,
+                            f'{check_type.capitalize()} QC')
+
+    return {
+        'summary': summary,
+        'checks': all_results,
+        'checks_by_category': _categorize_checks(all_results),
+        'visa_fields': {k: v for k, v in visa_fields.items()
+                        if not k.startswith('_') and not k.endswith('_parsed')},
+        'supporting_docs_count': len(supporting_doc_fields_list),
+        # Top-level keys for route to read
+        'overall_status': summary.get('overall_status', 'unknown').lower(),
+        'total_checks': summary.get('total_checks', 0),
+        'passed': summary.get('passed', 0),
+        'failed': summary.get('failed', 0),
+        'warnings': summary.get('warnings', 0),
+    }
