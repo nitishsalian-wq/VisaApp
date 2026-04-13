@@ -13,3 +13,4 @@ psycopg2-binary>=2.9
 pytesseract>=0.3
 Pillow>=10.0
 pdf2image>=1.16
+anthropic>=0.39

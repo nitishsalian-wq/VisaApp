@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+
+{% block title %}Generate Covering Letter — {{ applicant.full_name }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2><i class="fa fa-file-text-o"></i> Covering Letter Generator</h2>
+        <p class="text-muted">{{ applicant.full_name }} — {{ applicant.destination_country or 'Destination TBD' }}</p>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('applicants.view_applicant', applicant_id=applicant.id) }}" class="btn btn-outline-secondary">
+            <i class="fa fa-arrow-left"></i> Back to Applicant
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <!-- LEFT: Input Form -->
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fa fa-cog"></i> Letter Details</h5>
+            </div>
+            <div class="card-body">
+                <form id="coverLetterForm">
+                    <!-- Visa Type -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Visa Type <span class="text-danger">*</span></label>
+                        <select class="form-select" name="visa_type" id="visaType" required>
+                            <option value="schengen" {% if applicant.visa_type and 'schengen' in applicant.visa_type|lower %}selected{% endif %}>Schengen</option>
+                            <option value="uk" {% if applicant.visa_type and 'uk' in applicant.visa_type|lower %}selected{% endif %}>UK</option>
+                        </select>
+                    </div>
+
+                    <!-- Visa Purpose -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Purpose <span class="text-danger">*</span></label>
+                        <select class="form-select" name="visa_purpose" id="visaPurpose" required>
+                            <option value="tourist" {% if applicant.visa_purpose == 'tourist' %}selected{% endif %}>Tourist</option>
+                            <option value="business" {% if applicant.visa_purpose == 'business' %}selected{% endif %}>Business</option>
+                        </select>
+                    </div>
+
+                    <!-- Consulate -->
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Consulate Country</label>
+                            <input type="text" class="form-control" name="consulate_country"
+                                   value="{{ applicant.destination_country or '' }}" placeholder="e.g. France">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Consulate City</label>
+                            <input type="text" class="form-control" name="consulate_city"
+                                   placeholder="e.g. Bangalore">
+                        </div>
+                    </div>
+
+                    <!-- Travel End Date -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Travel End Date</label>
+                        <input type="date" class="form-control" name="travel_end_date">
+                    </div>
+
+                    <!-- ═══ BUSINESS FIELDS ═══ -->
+                    <div id="businessFields" style="display: none;">
+                        <hr>
+                        <h6 class="text-primary"><i class="fa fa-building"></i> Business Details</h6>
+
+                        <div class="mb-3">
+                            <label class="form-label">Employer / Sending Company</label>
+                            <input type="text" class="form-control" name="company_name"
+                                   value="{{ applicant.corporate_name or '' }}" placeholder="Company name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Company Address</label>
+                            <textarea class="form-control" name="company_address" rows="2"
+                                      placeholder="Full registered address"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Foreign Company / Host Entity</label>
+                            <input type="text" class="form-control" name="foreign_company"
+                                   placeholder="Name of the company being visited">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Foreign Company Address</label>
+                            <textarea class="form-control" name="foreign_company_address" rows="2"
+                                      placeholder="Full address of the host company"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Purpose of Visit</label>
+                            <input type="text" class="form-control" name="visit_purpose"
+                                   placeholder="e.g. Business meetings and technical discussions">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Letter Signatory Name</label>
+                            <input type="text" class="form-control" name="signatory_name"
+                                   placeholder="e.g. Pankaj Srivastava">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Signatory Designation</label>
+                            <input type="text" class="form-control" name="signatory_designation"
+                                   placeholder="e.g. Deputy General Manager">
+                        </div>
+                    </div>
+
+                    <!-- ═══ TOURIST FIELDS ═══ -->
+                    <div id="touristFields" style="display: none;">
+                        <hr>
+                        <h6 class="text-success"><i class="fa fa-plane"></i> Travel Details</h6>
+
+                        <div class="mb-3">
+                            <label class="form-label">Tour Operator (if applicable)</label>
+                            <input type="text" class="form-control" name="tour_operator"
+                                   placeholder="e.g. Bharath International Travels Pvt. Ltd.">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Co-travelers</label>
+                            <textarea class="form-control" name="co_travelers" rows="2"
+                                      placeholder="e.g. Wife: Mrs. Sathyabhama, Passport AN973308"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Country-wise Itinerary</label>
+                            <textarea class="form-control" name="itinerary" rows="5"
+                                      placeholder="Netherlands: 29 Apr - 30 Apr (1 night) - Amsterdam&#10;Belgium: 30 Apr - 01 May (1 night) - Brussels&#10;France: 01 May - 04 May (3 nights) - Paris"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Accommodation Details</label>
+                            <textarea class="form-control" name="accommodation" rows="2"
+                                      placeholder="Hotel bookings, host details, etc."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Financial Information</label>
+                            <textarea class="form-control" name="financial_info" rows="3"
+                                      placeholder="Employment status, income, savings (FDs), sponsorship details..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Additional Notes -->
+                    <div class="mb-3">
+                        <label class="form-label">Additional Notes</label>
+                        <textarea class="form-control" name="additional_details" rows="3"
+                                  placeholder="Any other details for the letter..."></textarea>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100" id="generateBtn">
+                        <i class="fa fa-magic"></i> Generate Covering Letter
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Applicant Info Card -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fa fa-user"></i> Applicant Data (auto-filled)</h6>
+            </div>
+            <div class="card-body small">
+                <dl class="row mb-0">
+                    <dt class="col-5">Name:</dt>
+                    <dd class="col-7">{{ applicant.full_name }}</dd>
+                    <dt class="col-5">Passport:</dt>
+                    <dd class="col-7">{{ applicant.passport_number or '-' }}</dd>
+                    <dt class="col-5">DOB:</dt>
+                    <dd class="col-7">{{ applicant.date_of_birth.strftime('%d/%m/%Y') if applicant.date_of_birth else '-' }}</dd>
+                    <dt class="col-5">Nationality:</dt>
+                    <dd class="col-7">{{ applicant.nationality or '-' }}</dd>
+                    <dt class="col-5">Travel Date:</dt>
+                    <dd class="col-7">{{ applicant.date_of_travel.strftime('%d/%m/%Y') if applicant.date_of_travel else '-' }}</dd>
+                    <dt class="col-5">Destination:</dt>
+                    <dd class="col-7">{{ applicant.destination_country or '-' }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT: Generated Letter Preview -->
+    <div class="col-lg-7">
+        <div class="card" id="previewCard" style="display: none;">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fa fa-file-text"></i> Generated Letter</h5>
+                <div>
+                    <button class="btn btn-sm btn-light me-2" onclick="copyToClipboard()">
+                        <i class="fa fa-copy"></i> Copy
+                    </button>
+                    <button class="btn btn-sm btn-warning" onclick="downloadDocx()">
+                        <i class="fa fa-download"></i> Download DOCX
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="letterPreview"
+                     style="white-space: pre-wrap; font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.6; padding: 20px; border: 1px solid #dee2e6; background: #fff; min-height: 400px;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading state -->
+        <div class="card" id="loadingCard" style="display: none;">
+            <div class="card-body text-center py-5">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Generating covering letter...</h5>
+                <p class="text-muted">AI is drafting your letter. This may take 10-20 seconds.</p>
+            </div>
+        </div>
+
+        <!-- Initial state -->
+        <div class="card" id="emptyCard">
+            <div class="card-body text-center py-5 text-muted">
+                <i class="fa fa-file-text-o" style="font-size: 4rem;"></i>
+                <h5 class="mt-3">Fill in the details and click "Generate"</h5>
+                <p>The AI will draft a professional covering letter based on the applicant data and your inputs.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden form for DOCX download -->
+<form id="downloadForm" method="POST" action="{{ url_for('coverletter.download_docx') }}" style="display: none;">
+    <input type="hidden" name="letter_text" id="downloadLetterText">
+    <input type="hidden" name="applicant_name" value="{{ applicant.full_name }}">
+</form>
+
+<script>
+let generatedText = '';
+
+// Toggle business/tourist fields
+function togglePurposeFields() {
+    const purpose = document.getElementById('visaPurpose').value;
+    document.getElementById('businessFields').style.display = purpose === 'business' ? 'block' : 'none';
+    document.getElementById('touristFields').style.display = purpose === 'tourist' ? 'block' : 'none';
+}
+
+document.getElementById('visaPurpose').addEventListener('change', togglePurposeFields);
+togglePurposeFields(); // Initial state
+
+// Generate letter
+document.getElementById('coverLetterForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Generating...';
+
+    document.getElementById('emptyCard').style.display = 'none';
+    document.getElementById('previewCard').style.display = 'none';
+    document.getElementById('loadingCard').style.display = 'block';
+
+    const formData = new FormData(this);
+
+    try {
+        const response = await fetch('{{ url_for("coverletter.generate", applicant_id=applicant.id) }}', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            generatedText = data.letter_text;
+            document.getElementById('letterPreview').textContent = data.letter_text;
+            document.getElementById('loadingCard').style.display = 'none';
+            document.getElementById('previewCard').style.display = 'block';
+        } else {
+            alert('Error: ' + (data.error || 'Failed to generate letter'));
+            document.getElementById('loadingCard').style.display = 'none';
+            document.getElementById('emptyCard').style.display = 'block';
+        }
+    } catch (err) {
+        alert('Network error: ' + err.message);
+        document.getElementById('loadingCard').style.display = 'none';
+        document.getElementById('emptyCard').style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa fa-magic"></i> Generate Covering Letter';
+    }
+});
+
+function copyToClipboard() {
+    navigator.clipboard.writeText(generatedText).then(() => {
+        const btn = event.target.closest('button');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fa fa-check"></i> Copied!';
+        setTimeout(() => btn.innerHTML = orig, 2000);
+    });
+}
+
+function downloadDocx() {
+    document.getElementById('downloadLetterText').value = generatedText;
+    document.getElementById('downloadForm').submit();
+}
+</script>
+{% endblock %}

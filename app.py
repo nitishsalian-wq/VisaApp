@@ -28,12 +28,14 @@ def create_app(config_name=None):
     from qc.routes import qc_bp
     from dashboard.routes import dashboard_bp
     from admin.routes import admin_bp
+    from coverletter.routes import coverletter_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(applicants_bp)
     app.register_blueprint(qc_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(coverletter_bp)
 
     # Home route - redirect to dashboard or login
     @app.route('/')
