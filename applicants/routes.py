@@ -99,48 +99,107 @@ def ocr_passport_text(file_path):
 def parse_passport_ocr(text):
     """Parse passport fields from OCR text using multiple strategies.
     Handles: passport bio pages (MRZ), invitation letters with tables,
-    and any document containing passport details."""
+    and any document containing passport details.
+
+    Key insight for Indian passports: OCR reads Hindi labels as garbage,
+    then the English label/value. The actual value is often on the NEXT
+    line after the label, not the same line. So we use a "next line"
+    approach for labeled fields."""
     import re
+    from datetime import date
     from qc.extractor import parse_date
     fields = {}
+    mrz_fields = {}
 
     if not text or len(text.strip()) < 10:
         return fields
 
-    # ── Strategy 1: MRZ (Machine Readable Zone) ──
-    mrz_lines = re.findall(r'[A-Z0-9<]{30,}', text)
-    if len(mrz_lines) >= 2:
-        line1 = mrz_lines[0]
-        line2 = mrz_lines[1] if len(mrz_lines) > 1 else ''
+    lines = text.split('\n')
 
-        if line1.startswith('P') and '<' in line1:
+    # ── Helper: get next meaningful text value after a label line ──
+    def get_next_value(lines, pattern, flags=re.IGNORECASE):
+        """Find a line matching pattern, return the next meaningful value.
+        Checks same line remainder first, then scans next 4 lines.
+        Requires at least 3 alphanumeric characters to filter OCR garbage."""
+        for i, line in enumerate(lines):
+            m = re.search(pattern, line, flags)
+            if m:
+                # Check rest of same line after the match
+                after = line[m.end():].strip()
+                after = re.sub(r'^[:/)\]}\s,;]+', '', after).strip()
+                alpha_count = sum(1 for c in after if c.isalnum())
+                if alpha_count >= 3:
+                    return after
+
+                # Scan next few lines for a meaningful value
+                for j in range(i + 1, min(i + 4, len(lines))):
+                    val = lines[j].strip()
+                    if not val:
+                        continue
+                    # Strip non-ASCII (Hindi/Devanagari) and check remainder
+                    val_ascii = re.sub(r'[^\x20-\x7E]', '', val).strip()
+                    val_clean = re.sub(r'^[:/)\]}\s,;]+', '', val_ascii).strip()
+                    alpha_count = sum(1 for c in val_clean if c.isalnum())
+                    if alpha_count >= 3:
+                        return val_clean
+        return None
+
+    # ── Helper: find a date (DD/MM/YYYY) near a label ──
+    def find_date_near_label(lines, pattern):
+        """Search for a date pattern on or near a line matching the label.
+        Returns (date_string, sex_char_or_None)."""
+        for i, line in enumerate(lines):
+            if re.search(pattern, line, re.IGNORECASE):
+                # Check same line and next 4 lines for a date
+                for j in range(i, min(i + 5, len(lines))):
+                    dm = re.search(r'(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})', lines[j])
+                    if dm:
+                        # Also check for M/F sex marker on the same line
+                        sm = re.search(r'\b([MF])\s*$', lines[j].strip())
+                        sex = sm.group(1) if sm else None
+                        return dm.group(1), sex
+        return None, None
+
+    # ── Strategy 1: MRZ (Machine Readable Zone) ──
+    # Only trust MRZ if it looks clean (OCR often garbles the tiny MRZ text)
+    mrz_lines_raw = re.findall(r'[A-Z0-9<]{30,}', text)
+    if len(mrz_lines_raw) >= 2:
+        line1 = mrz_lines_raw[0]
+        line2 = mrz_lines_raw[1]
+
+        if line1.startswith('P') and '<<' in line1:
             parts = line1[5:].split('<<', 1)
             if len(parts) == 2:
-                fields['surname'] = parts[0].replace('<', ' ').strip()
-                fields['first_name'] = parts[1].replace('<', ' ').strip()
+                surname = parts[0].replace('<', ' ').strip()
+                given = parts[1].replace('<', ' ').strip()
+                if surname and re.match(r'^[A-Z ]+$', surname):
+                    mrz_fields['surname'] = surname
+                if given and re.match(r'^[A-Z ]+$', given):
+                    mrz_fields['first_name'] = given
 
         if len(line2) >= 28:
-            fields['passport_number'] = line2[0:9].replace('<', '').strip()
+            pp_num = line2[0:9].replace('<', '').strip()
+            if re.match(r'^[A-Z0-9]{6,9}$', pp_num):
+                mrz_fields['passport_number'] = pp_num
+
             dob_raw = line2[13:19]
             if dob_raw.isdigit():
                 yy, mm, dd = int(dob_raw[0:2]), int(dob_raw[2:4]), int(dob_raw[4:6])
                 year = 1900 + yy if yy > 30 else 2000 + yy
                 try:
-                    from datetime import date
-                    fields['date_of_birth_parsed'] = date(year, mm, dd)
+                    mrz_fields['date_of_birth_parsed'] = date(year, mm, dd)
                 except ValueError:
                     pass
 
             sex_char = line2[20:21]
             if sex_char in ('M', 'F'):
-                fields['sex'] = 'Male' if sex_char == 'M' else 'Female'
+                mrz_fields['sex'] = 'Male' if sex_char == 'M' else 'Female'
 
             exp_raw = line2[21:27]
             if exp_raw.isdigit():
                 yy, mm, dd = int(exp_raw[0:2]), int(exp_raw[2:4]), int(exp_raw[4:6])
                 try:
-                    from datetime import date
-                    fields['passport_expiry_date_parsed'] = date(2000 + yy, mm, dd)
+                    mrz_fields['passport_expiry_date_parsed'] = date(2000 + yy, mm, dd)
                 except ValueError:
                     pass
 
@@ -153,144 +212,163 @@ def parse_passport_ocr(text):
                     'PAK': 'Pakistani', 'BGD': 'Bangladeshi', 'LKA': 'Sri Lankan',
                     'NPL': 'Nepalese', 'SGP': 'Singaporean', 'ARE': 'Emirati',
                 }
-                fields['nationality'] = country_map.get(nat_code, nat_code)
+                if nat_code in country_map:
+                    mrz_fields['nationality'] = country_map[nat_code]
 
-    # If MRZ worked, return early
-    if fields.get('surname') and fields.get('passport_number'):
-        return fields
+    # ── Strategy 2: Labeled fields with next-line value lookup ──
+    # Primary strategy for Indian passports where OCR reads:
+    #   "Hindi_garbage / Given Names)\n\nHARISH GOVINDHAIAH\n"
+    label_fields = {}
 
-    # ── Strategy 2: Labeled fields (Surname:, Given Names:, etc.) ──
-    if not fields.get('surname'):
-        m = re.search(r'(?:Surname|Family\s*Name|Last\s*Name)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
+    # Given Names — the main name field in Indian passports
+    # Search for "Given Name" or "Given Names" label
+    val = get_next_value(lines, r'Given\s*Names?')
+    if val:
+        name_clean = re.sub(r'[^A-Za-z\s]', '', val).strip()
+        if name_clean and len(name_clean) >= 3:
+            parts = name_clean.split()
+            if len(parts) >= 2:
+                # Indian passport "Given Names" = "FIRSTNAME FATHERSNAME"
+                label_fields['surname'] = parts[0].upper()
+                label_fields['first_name'] = ' '.join(parts[1:])
+            elif parts:
+                label_fields['first_name'] = parts[0]
+
+    # Surname — look for explicit "Surname" label (may override above)
+    val = get_next_value(lines, r'Surname')
+    if val:
+        surname_clean = re.sub(r'[^A-Za-z\s]', '', val).strip()
+        if surname_clean and len(surname_clean) >= 2 and re.match(r'^[A-Za-z\s]+$', surname_clean):
+            # Only use if it looks like a real surname (not "Given Names" text)
+            if 'given' not in surname_clean.lower() and 'name' not in surname_clean.lower():
+                label_fields['surname'] = surname_clean.split()[0].upper()
+
+    # Date of Birth — scan nearby lines for a date pattern
+    dob_str, sex_from_dob = find_date_near_label(lines, r'Date\s*of\s*Birth|DOB')
+    if dob_str:
+        label_fields['date_of_birth_parsed'] = parse_date(dob_str)
+    if sex_from_dob:
+        label_fields['sex'] = 'Male' if sex_from_dob == 'M' else 'Female'
+
+    # Sex (standalone, if not found on DOB line)
+    if not label_fields.get('sex'):
+        val = get_next_value(lines, r'\bSex\b')
+        if val:
+            sm = re.search(r'\b([MF])\b', val)
+            if sm:
+                label_fields['sex'] = 'Male' if sm.group(1) == 'M' else 'Female'
+
+    # Place of Birth
+    val = get_next_value(lines, r'Place\s*of\s*Birth')
+    if val:
+        val_clean = re.sub(r'[^A-Za-z,\s]', '', val).strip()
+        if val_clean and len(val_clean) >= 3:
+            label_fields['place_of_birth'] = val_clean
+
+    # Place of Issue — OCR may garble "Issue" as "tssue", "lssue", etc.
+    val = get_next_value(lines, r'Place\s*of\s*[A-Za-z]*ss?ue')
+    if val:
+        val_clean = re.sub(r'[^A-Za-z,\s]', '', val).strip()
+        if val_clean and len(val_clean) >= 3:
+            label_fields['place_of_issue'] = val_clean
+
+    # Date of Issue — scan nearby lines for date
+    issue_str, _ = find_date_near_label(lines, r'Date\s*of\s*[Ii]ss')
+    if issue_str:
+        label_fields['passport_issue_date_parsed'] = parse_date(issue_str)
+
+    # Date of Expiry — scan nearby lines for date
+    expiry_str, _ = find_date_near_label(lines, r'Date\s*of\s*Expiry|Expiry')
+    if expiry_str:
+        label_fields['passport_expiry_date_parsed'] = parse_date(expiry_str)
+
+    # Passport number from labeled field
+    val = get_next_value(lines, r'Passport\s*No|Passport\s*Number')
+    if val:
+        pm = re.search(r'([A-Z]{1,2}\d{6,7})', val)
+        if pm:
+            label_fields['passport_number'] = pm.group(1).upper()
+
+    # Passport number from anywhere in text (Indian: 1-2 letters + 7 digits)
+    if not label_fields.get('passport_number'):
+        m = re.search(r'\b([A-Z]{1,2}\d{7})\b', text)
         if m:
-            fields['surname'] = m.group(1).strip()
+            label_fields['passport_number'] = m.group(1).upper()
 
-    if not fields.get('first_name'):
-        m = re.search(r'(?:Given\s*Names?|First\s*Name)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
+    # Passport number fallback: OCR may misread first letter as digit
+    # e.g. "2A561391" instead of "ZA561391". Find 8-9 char alphanumeric tokens.
+    if not label_fields.get('passport_number'):
+        for line in lines:
+            m = re.search(r'\b([A-Z0-9]{8,9})\b', line)
+            if m:
+                candidate = m.group(1)
+                digit_count = sum(1 for c in candidate if c.isdigit())
+                if 5 <= digit_count <= 8:
+                    label_fields['passport_number'] = candidate
+                    break
+
+    # ── Merge: prefer label_fields (readable text) over MRZ (often garbled) ──
+    for key in set(list(label_fields.keys()) + list(mrz_fields.keys())):
+        if key in label_fields and label_fields[key]:
+            fields[key] = label_fields[key]
+        elif key in mrz_fields and mrz_fields[key]:
+            fields[key] = mrz_fields[key]
+
+    # ── Fallback strategies for remaining empty fields ──
+
+    # Nationality
+    if not fields.get('nationality'):
+        m = re.search(r'\b(Indian|American|British|Canadian|Australian|French|German|Japanese|Chinese|Pakistani|Bangladeshi|Sri Lankan|Nepalese|Singaporean|Emirati)\b', text, re.IGNORECASE)
         if m:
-            fields['first_name'] = m.group(1).strip()
+            fields['nationality'] = m.group(1).strip().title()
+        elif mrz_fields.get('nationality'):
+            fields['nationality'] = mrz_fields['nationality']
 
+    # Passport number: letter + 7 digits or 7-8 digits standalone
     if not fields.get('passport_number'):
-        m = re.search(r'(?:Passport\s*No\.?|Passport\s*Number)\s*[:/|]?\s*([A-Z0-9]{5,9})', text, re.IGNORECASE)
-        if m:
-            fields['passport_number'] = m.group(1).strip().upper()
-
-    if not fields.get('date_of_birth_parsed'):
-        m = re.search(r'(?:Date\s*of\s*Birth|DOB|Date\s*of\s*\n\s*Birth)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
-        if m:
-            fields['date_of_birth_parsed'] = parse_date(m.group(1))
-
-    if not fields.get('sex'):
-        m = re.search(r'(?:Sex|Gender)\s*[:/]?\s*([MF](?:ale|emale)?)', text, re.IGNORECASE)
-        if m:
-            sex = m.group(1).strip().upper()
-            fields['sex'] = 'Male' if sex.startswith('M') else 'Female'
-
-    if not fields.get('place_of_birth'):
-        m = re.search(r'(?:Place\s*of\s*Birth)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
-        if m:
-            fields['place_of_birth'] = m.group(1).strip()
-
-    if not fields.get('passport_expiry_date_parsed'):
-        m = re.search(r'(?:Date\s*of\s*Expiry|Valid\s*Until|Expiry\s*date|Expiry)\s*[:/]?\s*(.+?)(?:\n)', text, re.IGNORECASE)
-        if m:
-            fields['passport_expiry_date_parsed'] = parse_date(m.group(1))
-
-    # ── Strategy 3: Table/tabular data (invitation letters, etc.) ──
-    # Look for passport numbers anywhere in text (6-9 alphanumeric chars)
-    if not fields.get('passport_number'):
-        # Indian passports: letter followed by 7 digits, e.g. T2796395 or just digits
         m = re.search(r'(?<!\w)([A-Z]\d{7}|\d{7,8})(?!\w)', text)
         if m:
             fields['passport_number'] = m.group(1).upper()
 
-    # Look for dates in DD/MM/YYYY format near "birth" or "dob"
+    # DOB: find date near "birth" keyword
     if not fields.get('date_of_birth_parsed'):
         m = re.search(r'(?:birth|dob|born).*?(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})', text, re.IGNORECASE)
         if m:
             fields['date_of_birth_parsed'] = parse_date(m.group(1))
         else:
-            # Find any DD/MM/YYYY date that looks like a DOB (person born 1940-2010)
             dates = re.findall(r'(\d{1,2}[/.-]\d{1,2}[/.-](?:19|20)\d{2})', text)
             for d in dates:
                 parsed = parse_date(d)
-                if parsed:
-                    year = parsed.year if hasattr(parsed, 'year') else 0
-                    if 1940 <= year <= 2010:
-                        fields['date_of_birth_parsed'] = parsed
-                        break
+                if parsed and hasattr(parsed, 'year') and 1940 <= parsed.year <= 2010:
+                    fields['date_of_birth_parsed'] = parsed
+                    break
 
-    # Look for Gender marker: standalone M or F near "Gender" column header
+    # Sex: standalone M/F
     if not fields.get('sex'):
         m = re.search(r'Gender\b.*?\b([MF])\b', text, re.IGNORECASE)
         if m:
             fields['sex'] = 'Male' if m.group(1).upper() == 'M' else 'Female'
-        else:
-            # Look for standalone M/F near name-like text
-            m = re.search(r'\b([MF])\s+[A-Z][a-z]+\s+[A-Z][a-z]+', text)
-            if m:
-                fields['sex'] = 'Male' if m.group(1) == 'M' else 'Female'
 
-    # ── Strategy 4: Extract names from table rows near passport number ──
+    # Names from table rows near passport number (for invitation letters)
     if not fields.get('surname') and fields.get('passport_number'):
         pp = fields['passport_number']
-        # Find the line containing the passport number and extract names from it
-        for line in text.split('\n'):
-            # Match even if spaces differ (OCR can insert/remove spaces)
+        for line in lines:
             line_nospace = line.replace(' ', '')
             if pp in line_nospace or pp.replace(' ', '') in line_nospace:
-                # Extract name-like words before the passport number
                 words_before = line.split(pp)[0] if pp in line else line
-                # Clean up separators (pipes, colons, tabs)
                 words_before = re.sub(r'[|:;\t]', ' ', words_before)
-                # Remove single-char noise (M/F gender markers at start)
                 words_before = re.sub(r'^\s*[MF]\s+', '', words_before)
-
-                # Try mixed case names first (e.g. "Nitish Mahendra Salian")
                 name_parts = re.findall(r'[A-Z][a-z]+', words_before)
                 if len(name_parts) >= 2:
                     fields['surname'] = name_parts[-1].upper()
                     fields['first_name'] = ' '.join(name_parts[:-1])
                     break
-
-                # Try ALL CAPS names (e.g. "NITISH MAHENDRA SALIAN")
-                name_parts = re.findall(r'[A-Z]{2,}', words_before)
-                # Filter out noise like "MR", "MS", single letters
-                name_parts = [p for p in name_parts if len(p) >= 3 and p not in ('MR', 'MRS', 'MS', 'DR')]
-                if len(name_parts) >= 2:
-                    fields['surname'] = name_parts[-1].upper()
-                    fields['first_name'] = ' '.join(p.title() for p in name_parts[:-1])
-                    break
-
-                # Try any word-like tokens at least 3 chars
-                name_parts = re.findall(r'[A-Za-z]{3,}', words_before)
-                name_parts = [p for p in name_parts if p.upper() not in ('MR', 'MRS', 'MS', 'DR', 'THE')]
+                name_parts = [p for p in re.findall(r'[A-Z]{2,}', words_before) if len(p) >= 3 and p not in ('MR','MRS','MS','DR')]
                 if len(name_parts) >= 2:
                     fields['surname'] = name_parts[-1].upper()
                     fields['first_name'] = ' '.join(p.title() for p in name_parts[:-1])
                     break
                 break
-
-    # Also try: find names near passport number in broader context
-    if not fields.get('surname'):
-        # "FirstName LastName | PASSPORT_NO" or "FirstName LastName 12345678"
-        m = re.search(r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*[|,]?\s*\d{7,8}', text)
-        if m:
-            name_parts = m.group(1).strip().split()
-            if len(name_parts) >= 2:
-                fields['surname'] = name_parts[-1].upper()
-                fields['first_name'] = ' '.join(name_parts[:-1])
-
-    # ── Strategy 5: Nationality from text ──
-    if not fields.get('nationality'):
-        m = re.search(r'(?:Nationality|Citizen(?:ship)?)\s*[:/|]?\s*([A-Za-z]+)', text, re.IGNORECASE)
-        if m:
-            fields['nationality'] = m.group(1).strip().title()
-        else:
-            # "INDIAN" or "Indian" standalone near passport context
-            m = re.search(r'\b(Indian|American|British|Canadian|Australian|French|German|Japanese|Chinese|Pakistani|Bangladeshi|Sri Lankan|Nepalese|Singaporean|Emirati)\b', text, re.IGNORECASE)
-            if m:
-                fields['nationality'] = m.group(1).strip().title()
 
     return fields
 
